@@ -1,0 +1,48 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" fill="none">
+  <defs>
+    <linearGradient id="tyreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="50%" stop-color="#0077fe" />
+      <stop offset="100%" stop-color="#05d554" />
+    </linearGradient>
+    <linearGradient id="neonGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#00f0ff" />
+      <stop offset="100%" stop-color="#38bdf8" />
+    </linearGradient>
+    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="3" result="blur" />
+      <feComposite in="SourceGraphic" in2="blur" operator="over" />
+    </filter>
+  </defs>
+
+  <!-- Tyre Icon Symbol -->
+  <g transform="translate(4, 4)">
+    <!-- Outer Tyre Tread Ring -->
+    <circle cx="28" cy="28" r="26" stroke="#1f293d" stroke-width="3" fill="#0d131f" />
+    
+    <!-- Tread Notches -->
+    <path d="M28 2 L28 6 M28 50 L28 54 M2 28 L6 28 M50 28 L54 28 M9.6 9.6 L12.5 12.5 M43.5 43.5 L46.4 46.4 M9.6 46.4 L12.5 43.5 M43.5 12.5 L46.4 9.6" 
+          stroke="#00f0ff" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
+    
+    <!-- Telemetry Arc (Dynamic Sensor Wave) -->
+    <path d="M12 28 A16 16 0 1 1 44 28" stroke="url(#tyreGrad)" stroke-width="3.5" stroke-linecap="round" fill="none" filter="url(#glow)"/>
+    <path d="M16 28 A12 12 0 0 0 40 28" stroke="#00f0ff" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3 3" fill="none" opacity="0.7"/>
+
+    <!-- Wheel Hub Center Sensor Dot -->
+    <circle cx="28" cy="28" r="6" fill="#0b111a" stroke="#00f0ff" stroke-width="2" />
+    <circle cx="28" cy="28" r="2.5" fill="#00f0ff" />
+    
+    <!-- Pulse Ring -->
+    <circle cx="28" cy="28" r="18" stroke="#38bdf8" stroke-width="1" stroke-dasharray="2 6" fill="none" opacity="0.4" />
+  </g>
+
+  <!-- TYRAVEX Wordmark -->
+  <g transform="translate(74, 14)">
+    <text x="0" y="26" font-family="'Outfit', 'Space Grotesk', 'Segoe UI', system-ui, sans-serif" font-weight="900" font-size="28" letter-spacing="3.5" fill="#ffffff">
+      TYRA<tspan fill="url(#neonGlow)">VEX</tspan>
+    </text>
+    <text x="1" y="40" font-family="'JetBrains Mono', 'Segoe UI', monospace" font-size="8.5" font-weight="600" letter-spacing="2.8" fill="#64748b">
+      TELEMETRY &amp; HEALTH
+    </text>
+  </g>
+</svg>

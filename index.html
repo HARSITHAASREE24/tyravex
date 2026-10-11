@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TYRAVEX | Real-Time Tyre Telemetry & Health Monitoring</title>
+  <meta name="description" content="TYRAVEX is an automotive telemetry and tyre health monitoring system connecting an ESP32 microcontroller with Web Serial API for live temperature, pressure, and road impact analysis.">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+
+  <!-- Modern Automotive Typography Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Outfit:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Core Dashboard Stylesheet -->
+  <link rel="stylesheet" href="style.css">
+
+  <!-- Third-Party Telemetry Libraries via CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <!-- Early Theme Initialization to Prevent Flash of Wrong Theme -->
+  <script>
+    (function() {
+      try {
+        var theme = localStorage.getItem('tyravex_theme') || 'dark';
+        if (theme === 'system') {
+          theme = window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
+        }
+        document.documentElement.setAttribute('data-theme', theme);
+      } catch(e) {}
+    })();
+  </script>
+</head>
+<body>
+
+  <!-- Sticky Automotive Header -->
+  <header class="app-header">
+    <div class="brand-wrapper">
+      <!-- Theme Adaptive Vector Logo -->
+      <svg class="brand-logo" id="headerLogo" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 280 64" fill="none" role="img" aria-label="TYRAVEX Logo">
+        <defs>
+          <linearGradient id="tyreGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="50%" stop-color="#0077fe" />
+            <stop offset="100%" stop-color="#05d554" />
+          </linearGradient>
+          <linearGradient id="neonGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stop-color="#00f0ff" />
+            <stop offset="100%" stop-color="#38bdf8" />
+          </linearGradient>
+          <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur stdDeviation="3" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        </defs>
+
+        <!-- Tyre Icon Symbol -->
+        <g transform="translate(4, 4)">
+          <!-- Outer Tyre Tread Ring -->
+          <circle cx="28" cy="28" r="26" stroke="var(--logo-hub-stroke)" stroke-width="3" fill="var(--logo-hub-bg)" />
+          
+          <!-- Tread Notches -->
+          <path d="M28 2 L28 6 M28 50 L28 54 M2 28 L6 28 M50 28 L54 28 M9.6 9.6 L12.5 12.5 M43.5 43.5 L46.4 46.4 M9.6 46.4 L12.5 43.5 M43.5 12.5 L46.4 9.6" 
+                stroke="var(--accent-cyan)" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
+          
+          <!-- Telemetry Arc (Dynamic Sensor Wave) -->
+          <path d="M12 28 A16 16 0 1 1 44 28" stroke="url(#tyreGrad)" stroke-width="3.5" stroke-linecap="round" fill="none" filter="url(#glow)"/>
+          <path d="M16 28 A12 12 0 0 0 40 28" stroke="var(--accent-cyan)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3 3" fill="none" opacity="0.7"/>
+
+          <!-- Wheel Hub Center Sensor Dot -->
+          <circle cx="28" cy="28" r="6" fill="var(--bg-secondary)" stroke="var(--accent-cyan)" stroke-width="2" />
+          <circle cx="28" cy="28" r="2.5" fill="var(--accent-cyan)" />
+          
+          <!-- Pulse Ring -->
+          <circle cx="28" cy="28" r="18" stroke="var(--accent-electric)" stroke-width="1" stroke-dasharray="2 6" fill="none" opacity="0.4" />
+        </g>
+
+        <!-- TYRAVEX Wordmark -->
+        <g transform="translate(74, 14)">
+          <text x="0" y="26" font-family="'Outfit', 'Space Grotesk', 'Segoe UI', system-ui, sans-serif" font-weight="900" font-size="28" letter-spacing="3.5" fill="var(--logo-text-fill)">
+            TYRA<tspan fill="url(#neonGlow)">VEX</tspan>
+          </text>
+          <text x="1" y="40" font-family="'JetBrains Mono', 'Segoe UI', monospace" font-size="8.5" font-weight="600" letter-spacing="2.8" fill="var(--text-muted)">
+            TELEMETRY &amp; HEALTH
+          </text>
+        </g>
+      </svg>
+      <span class="brand-tagline">Monitor Every Ride. Protect Every Tyre.</span>
+    </div>
+
+    <div class="header-actions">
+      <!-- Live Monitoring Indicator -->
+      <div class="live-indicator" id="liveMonitoringIndicator" title="Telemetry Engine Active">
+        <span class="pulse-dot"></span>
+        <span>Live Telemetry</span>
+      </div>
+
+      <!-- Connection Status Badge -->
+      <div class="connection-badge" id="headerConnBadge">
+        <i data-lucide="usb" style="width: 14px; height: 14px;"></i>
+        <span id="headerConnStatusText">DISCONNECTED</span>
+      </div>
+
+      <!-- Theme Switch Button (Light / Dark) -->
+      <button class="btn-icon theme-toggle-btn" id="themeToggleBtn" title="Switch Theme (Light / Dark)" aria-label="Toggle Theme">
+        <i data-lucide="sun" id="themeToggleIcon" style="width: 18px; height: 18px;"></i>
+      </button>
+
+      <!-- Settings Trigger Button -->
+      <button class="btn-icon" id="openSettingsBtn" title="Telemetry &amp; Alert Settings" aria-label="Open Settings">
+        <i data-lucide="sliders-horizontal" style="width: 18px; height: 18px;"></i>
+      </button>
+    </div>
+  </header>
+
+  <!-- Hardware Connection Bar -->
+  <section class="connection-bar" aria-label="Hardware Connection Controls">
+    <div class="connection-controls-group">
+      <!-- Connect ESP32 Primary Button -->
+      <button class="btn-primary" id="connectSerialBtn">
+        <i data-lucide="cable" style="width: 16px; height: 16px;"></i>
+        <span>CONNECT ESP32</span>
+      </button>
+
+      <!-- Disconnect Button -->
+      <button class="btn-danger" id="disconnectSerialBtn" disabled>
+        <i data-lucide="power-off" style="width: 15px; height: 15px;"></i>
+        <span>Disconnect</span>
+      </button>
+
+      <!-- Baud Rate Selection -->
+      <div class="baud-selector-group">
+        <label for="baudRateSelect">Baud:</label>
+        <select id="baudRateSelect" class="baud-select">
+          <option value="9600">9600</option>
+          <option value="19200">19200</option>
+          <option value="38400">38400</option>
+          <option value="57600">57600</option>
+          <option value="115200" selected>115200 (Default)</option>
+          <option value="230400">230400</option>
+          <option value="921600">921600</option>
+        </select>
+      </div>
+
+      <!-- Selected Port & Device Display -->
+      <div class="port-info-display" id="portInfoDisplay">
+        <i data-lucide="cpu" style="width: 15px; height: 15px;"></i>
+        <span>Port:</span>
+        <span class="port-info-badge" id="portInfoText">No Port Selected</span>
+      </div>
+    </div>
+
+    <!-- Demonstration Mode Toggle -->
+    <div class="demo-toggle-group" title="Simulate realistic sensor stream for UI evaluation without ESP32 attached">
+      <span>DEMO MODE</span>
+      <label class="switch">
+        <input type="checkbox" id="demoModeToggle">
+        <span class="slider"></span>
+      </label>
+    </div>
+  </section>
+
+  <!-- Web Serial Browser Support Warning Banner -->
+  <div class="compat-banner" id="compatBanner">
+    <strong>Web Serial API Not Supported:</strong> Your browser cannot directly communicate with USB serial hardware.
+    Please open TYRAVEX in a desktop browser such as <strong>Google Chrome</strong>, <strong>Microsoft Edge</strong>, or <strong>Opera</strong>.
+  </div>
+
+  <!-- Active Demo Mode Indicator Banner -->
+  <div class="demo-mode-banner" id="demoBanner" style="display: none;">
+    <i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i>
+    <span><strong>DEMO MODE ACTIVE:</strong> Synthesizing tyre physics telemetry for interface demonstration. Readings do not reflect physical sensors.</span>
+  </div>
+
+  <!-- Main Dashboard Container -->
+  <main class="dashboard-container">
+
+    <!-- Top Telemetry Row: Cards A through F -->
+    <div class="telemetry-grid">
+
+      <!-- CARD A: OVERALL TYRE HEALTH -->
+      <article class="telemetry-card card-health" id="cardOverallHealth">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="shield-check" class="card-icon"></i>
+            <h2 class="card-title">Overall Tyre Health</h2>
+          </div>
+          <span class="card-status-badge" id="healthStatusBadge">INSUFFICIENT DATA</span>
+        </header>
+
+        <!-- Circular Score Gauge -->
+        <div class="health-gauge-container">
+          <div class="gauge-svg-wrapper">
+            <svg class="gauge-svg" viewBox="0 0 160 160">
+              <circle class="gauge-bg-circle" cx="80" cy="80" r="70"></circle>
+              <circle class="gauge-progress-circle" id="gaugeProgressCircle" cx="80" cy="80" r="70"></circle>
+            </svg>
+            <div class="gauge-center-content">
+              <div class="gauge-score-value" id="healthScoreDisplay">--</div>
+              <div class="gauge-score-label">Health Score</div>
+            </div>
+          </div>
+          <p class="health-condition-text" id="healthConditionDisplay">Awaiting Sensor Telemetry</p>
+        </div>
+
+        <!-- Meta Details -->
+        <div class="health-meta-rows">
+          <div class="health-meta-row">
+            <span class="health-meta-label">Health Trend:</span>
+            <span class="health-meta-val" id="healthTrendDisplay">STABLE</span>
+          </div>
+          <div class="health-meta-row">
+            <span class="health-meta-label">Last Updated:</span>
+            <span class="health-meta-val" id="healthLastUpdatedDisplay">Never</span>
+          </div>
+        </div>
+
+        <!-- Contributing Sensor Warnings Box -->
+        <div class="warnings-box" id="healthWarningsBox"></div>
+
+        <p class="disclaimer-subtext">
+          Experimental estimate based on configured sensor rules. Not certified tyre degradation measurement.
+        </p>
+      </article>
+
+      <!-- CARD B: TYRE TEMPERATURE -->
+      <article class="telemetry-card card-temp" id="cardTemperature">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="thermometer" class="card-icon"></i>
+            <h2 class="card-title">Tyre Temperature</h2>
+          </div>
+          <span class="card-status-badge" id="tempStatusBadge">NO DATA</span>
+        </header>
+
+        <div class="metric-big-display">
+          <span class="metric-number" id="tempCurrentDisplay">--</span>
+          <span class="metric-unit">°C</span>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Min Session</span>
+            <span class="metric-stat-val" id="tempMinDisplay">-- °C</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Max Session</span>
+            <span class="metric-stat-val" id="tempMaxDisplay">-- °C</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Trend</span>
+            <span class="metric-stat-val" id="tempTrendDisplay">Steady</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Sensor Circuit</span>
+            <span class="metric-stat-val">DS18B20 OneWire</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          Disconnection or invalid reading enters immediate error state. No synthesized fallbacks.
+        </p>
+      </article>
+
+      <!-- CARD C: TYRE PRESSURE -->
+      <article class="telemetry-card card-pressure" id="cardPressure">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="gauge" class="card-icon"></i>
+            <h2 class="card-title">Tyre Pressure</h2>
+          </div>
+          <!-- Unit Selector -->
+          <div class="unit-switch-group" id="pressureUnitToggle">
+            <button class="unit-btn active" data-unit="PSI">PSI</button>
+            <button class="unit-btn" data-unit="bar">bar</button>
+            <button class="unit-btn" data-unit="kPa">kPa</button>
+          </div>
+        </header>
+
+        <div class="metric-big-display">
+          <span class="metric-number" id="pressureCurrentDisplay">--</span>
+          <span class="metric-unit" id="pressureCurrentUnit">PSI</span>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Target Pressure</span>
+            <span class="metric-stat-val" id="pressureTargetDisplay">32.0 PSI</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Deviation (ΔP)</span>
+            <span class="metric-stat-val" id="pressureDeviationDisplay">--</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Status</span>
+            <span class="metric-stat-val" id="pressureStatusText">NOT CONFIGURED</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Transducer</span>
+            <span class="metric-stat-val" id="pressureSensorState">UNCALIBRATED</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          Displays RAW / UNCALIBRATED until confirmed tyre pressure transducer is connected and zero-point calibrated.
+        </p>
+      </article>
+
+      <!-- CARD D: VIBRATION MONITORING -->
+      <article class="telemetry-card card-vibration" id="cardVibration">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="activity" class="card-icon"></i>
+            <h2 class="card-title">Vibration Monitoring</h2>
+          </div>
+          <span class="card-status-badge" id="vibrationStatusBadge">NO DATA</span>
+        </header>
+
+        <div class="metric-big-display">
+          <span class="metric-number" id="vibrationCurrentDisplay">--</span>
+          <span class="metric-unit" id="vibrationCurrentUnit">g</span>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Peak Vibration</span>
+            <span class="metric-stat-val" id="vibrationPeakDisplay">-- g</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Abnormal Events</span>
+            <span class="metric-stat-val" id="vibrationAbnormalDisplay">0</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Vibration Status</span>
+            <span class="metric-stat-val" id="vibrationStateDisplay">Awaiting Sensor</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Measurement Type</span>
+            <span class="metric-stat-val">3-Axis Magnitude</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          Measures wheel-well vibration intensity. Does not derive vehicle load from vibration alone.
+        </p>
+      </article>
+
+      <!-- CARD E: ROAD IMPACT ANALYSIS -->
+      <article class="telemetry-card card-road" id="cardRoadImpact">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="zap" class="card-icon"></i>
+            <h2 class="card-title">Road Impact Analysis</h2>
+          </div>
+          <span class="card-status-badge" id="roadConditionBadge">INSUFFICIENT DATA</span>
+        </header>
+
+        <div class="metric-big-display">
+          <span class="metric-number" id="impactCountDisplay">0</span>
+          <span class="metric-unit">Events</span>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Peak Impact Spike</span>
+            <span class="metric-stat-val" id="impactPeakDisplay">-- g</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Road Surface Profile</span>
+            <span class="metric-stat-val" id="roadProfileDisplay">Insufficient Data</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Impact Threshold</span>
+            <span class="metric-stat-val" id="impactThresholdDisplay">≥ 2.0 g</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Classification</span>
+            <span class="metric-stat-val">Prototype Estimate</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          Road condition classification is an estimate derived from dynamic acceleration peaks.
+        </p>
+      </article>
+
+      <!-- CARD F: SENSOR HEALTH & COMMUNICATION -->
+      <article class="telemetry-card card-sensor-health" id="cardSensorHealth">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="heart-pulse" class="card-icon"></i>
+            <h2 class="card-title">Sensor Health</h2>
+          </div>
+          <span class="card-status-badge" id="commStatusBadge">IDLE</span>
+        </header>
+
+        <!-- Sensor Diagnostics Matrix -->
+        <div class="sensor-status-matrix">
+          <div class="sensor-row">
+            <span class="sensor-name">ESP32 USB UART</span>
+            <span class="sensor-pill none" id="sensorEsp32Pill">DISCONNECTED</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-name">DS18B20 Temperature</span>
+            <span class="sensor-pill none" id="sensorTempPill">NO DATA</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-name">Pressure Transducer</span>
+            <span class="sensor-pill none" id="sensorPressurePill">UNCALIBRATED</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-name">Vibration Sensor</span>
+            <span class="sensor-pill none" id="sensorVibrationPill">NO DATA</span>
+          </div>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Packets Ingested</span>
+            <span class="metric-stat-val" id="packetsCountDisplay">0</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Invalid Packets</span>
+            <span class="metric-stat-val" id="invalidPacketsDisplay">0</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Comm Errors</span>
+            <span class="metric-stat-val" id="commErrorsDisplay">0</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Last Valid Packet</span>
+            <span class="metric-stat-val" id="lastPacketTimeDisplay">Never</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          A connected USB port does not imply operational sensor probes. Each channel is validated independently.
+        </p>
+      </article>
+
+    </div><!-- End Telemetry Grid -->
+
+    <!-- CARD G: LIVE SENSOR CHARTS -->
+    <section class="charts-section" id="chartsSection">
+      <div class="section-header-bar">
+        <h2 class="section-title">
+          <i data-lucide="line-chart" style="width: 20px; height: 20px; color: var(--accent-cyan);"></i>
+          Live Telemetry Waveforms
+        </h2>
+        <div class="chart-controls-group">
+          <button class="btn-secondary" id="pauseChartsBtn">
+            <i data-lucide="pause" style="width: 14px; height: 14px;"></i>
+            <span id="pauseChartsText">Pause</span>
+          </button>
+          <button class="btn-secondary" id="resetChartsBtn">
+            <i data-lucide="rotate-ccw" style="width: 14px; height: 14px;"></i>
+            <span>Reset History</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="charts-grid">
+        <!-- Chart 1: Temperature -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <i data-lucide="thermometer" class="card-icon"></i>
+              <h3 class="card-title">Temperature Over Time (°C)</h3>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="tempChartCanvas"></canvas>
+            <div class="chart-empty-state" id="tempChartEmpty">
+              <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
+              <span>Awaiting Temperature Stream</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 2: Pressure -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <i data-lucide="gauge" class="card-icon"></i>
+              <h3 class="card-title">Pressure Over Time (<span id="chartPressureUnitLabel">PSI</span>)</h3>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="pressureChartCanvas"></canvas>
+            <div class="chart-empty-state" id="pressureChartEmpty">
+              <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
+              <span>Awaiting Calibrated Pressure Stream</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 3: Vibration -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <i data-lucide="activity" class="card-icon"></i>
+              <h3 class="card-title">Vibration Magnitude (g)</h3>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="vibrationChartCanvas"></canvas>
+            <div class="chart-empty-state" id="vibrationChartEmpty">
+              <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
+              <span>Awaiting Vibration Telemetry</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARD H: LIVE EVENT LOG -->
+    <section class="log-section" id="logSection">
+      <div class="section-header-bar">
+        <h2 class="section-title">
+          <i data-lucide="list-filter" style="width: 20px; height: 20px; color: var(--accent-cyan);"></i>
+          Real-Time Telemetry Event Log
+        </h2>
+        <div class="chart-controls-group">
+          <!-- Filters -->
+          <div class="log-filter-tabs">
+            <button class="filter-tab active" data-filter="ALL">All Events</button>
+            <button class="filter-tab" data-filter="WARNING">Warnings</button>
+            <button class="filter-tab" data-filter="CRITICAL">Critical</button>
+            <button class="filter-tab" data-filter="SENSOR_ERROR">Sensor Errors</button>
+          </div>
+          <!-- Export CSV -->
+          <button class="btn-secondary" id="exportCsvBtn">
+            <i data-lucide="download" style="width: 14px; height: 14px;"></i>
+            <span>Export CSV</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Log Table -->
+      <div class="table-responsive">
+        <table class="telemetry-table" id="eventLogTable">
+          <thead>
+            <tr>
+              <th style="width: 90px;">Time</th>
+              <th style="width: 90px;">Severity</th>
+              <th style="width: 120px;">Health Status</th>
+              <th style="width: 100px;">Temp</th>
+              <th style="width: 110px;">Pressure</th>
+              <th style="width: 100px;">Vibration</th>
+              <th>Telemetry Event Description</th>
+            </tr>
+          </thead>
+          <tbody id="eventLogTableBody">
+            <tr>
+              <td colspan="7" class="table-empty-row">
+                No telemetry events logged yet. Connect ESP32 or toggle Demo Mode to stream data.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <p class="disclaimer-subtext">
+        Notice: Log history is preserved in client browser memory and will reset upon page reload. No server database is required for this prototype.
+      </p>
+    </section>
+
+  </main>
+
+  <!-- Settings Configuration Modal -->
+  <div class="modal-backdrop" id="settingsModal" aria-hidden="true">
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="settingsModalTitle">
+      <header class="modal-header">
+        <h2 class="modal-title" id="settingsModalTitle">
+          <i data-lucide="sliders" style="width: 18px; height: 18px; color: var(--accent-cyan);"></i>
+          TYRAVEX System &amp; Alert Configuration
+        </h2>
+        <button class="btn-icon" id="closeSettingsBtn" aria-label="Close Settings">
+          <i data-lucide="x" style="width: 18px; height: 18px;"></i>
+        </button>
+      </header>
+
+      <form id="settingsForm" class="modal-body">
+
+        <!-- Section 0: Appearance & Theme Priority -->
+        <div>
+          <h3 class="settings-section-title">Appearance &amp; Theme</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgThemeMode">Theme Priority:</label>
+              <select id="cfgThemeMode" class="form-input">
+                <option value="dark">Dark Graphite Mode (Automotive)</option>
+                <option value="light">Daylight / Lab Cleanroom Light Mode</option>
+                <option value="system">Follow System Preference (Auto)</option>
+              </select>
+              <span class="field-hint">Select between high-contrast automotive dark or daylight light mode.</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 1: Pressure & Target Parameters -->
+        <div>
+          <h3 class="settings-section-title">Tyre Calibration Targets</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgTargetPressure">Target Tyre Pressure (PSI):</label>
+              <input type="number" step="0.5" min="15" max="80" id="cfgTargetPressure" class="form-input" required>
+              <span class="field-hint">Specify vehicle manufacturer cold tyre pressure.</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgPressureUnit">Preferred Display Unit:</label>
+              <select id="cfgPressureUnit" class="form-input">
+                <option value="PSI">PSI (Pounds per Square Inch)</option>
+                <option value="bar">bar</option>
+                <option value="kPa">kPa (Kilopascal)</option>
+              </select>
+              <span class="field-hint">Automatic mathematical conversion applied.</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgPressWarnPct">Pressure Warning Tolerance (±%):</label>
+              <input type="number" step="1" min="3" max="30" id="cfgPressWarnPct" class="form-input" required>
+              <span class="field-hint">Trigger warning when pressure deviates by ±%</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgPressCritPct">Pressure Critical Tolerance (±%):</label>
+              <input type="number" step="1" min="10" max="50" id="cfgPressCritPct" class="form-input" required>
+              <span class="field-hint">Trigger critical alert when pressure deviates by ±%</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Temperature & Vibration Thresholds -->
+        <div>
+          <h3 class="settings-section-title">Thermal &amp; Dynamic Limits</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgTempWarn">Temp Warning Threshold (°C):</label>
+              <input type="number" step="1" min="30" max="90" id="cfgTempWarn" class="form-input" required>
+              <span class="field-hint">Typical tyre operating threshold (e.g. 50°C)</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgTempCrit">Temp Critical Threshold (°C):</label>
+              <input type="number" step="1" min="50" max="120" id="cfgTempCrit" class="form-input" required>
+              <span class="field-hint">Severe heat buildup risk (e.g. 70°C)</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgVibWarn">Vibration Warning Level (g):</label>
+              <input type="number" step="0.1" min="0.5" max="5.0" id="cfgVibWarn" class="form-input" required>
+              <span class="field-hint">High vibration limit indicator</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgImpactThresh">Road Impact Spike Threshold (g):</label>
+              <input type="number" step="0.1" min="1.0" max="10.0" id="cfgImpactThresh" class="form-input" required>
+              <span class="field-hint">Acceleration spike counted as road pothole/bump</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Health Score Weightings -->
+        <div>
+          <h3 class="settings-section-title">Transparent Health Scoring Weights (%)</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgWeightPress">Pressure Weight (%):</label>
+              <input type="number" min="10" max="80" id="cfgWeightPress" class="form-input" required>
+            </div>
+            <div class="form-field">
+              <label for="cfgWeightTemp">Temperature Weight (%):</label>
+              <input type="number" min="10" max="80" id="cfgWeightTemp" class="form-input" required>
+            </div>
+            <div class="form-field">
+              <label for="cfgWeightVib">Vibration Weight (%):</label>
+              <input type="number" min="10" max="80" id="cfgWeightVib" class="form-input" required>
+            </div>
+            <div class="form-field">
+              <label for="cfgChartPoints">Chart Rolling Buffer Points:</label>
+              <input type="number" min="15" max="150" id="cfgChartPoints" class="form-input" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 4: EmailJS Automated Alerts -->
+        <div>
+          <h3 class="settings-section-title">Automated Email Alerts (EmailJS)</h3>
+          <p class="field-hint" style="margin-bottom: 0.75rem;">
+            Optional service. Sends rate-limited email notifications via your EmailJS credentials during critical threshold violations.
+          </p>
+
+          <div class="form-field" style="margin-bottom: 0.75rem;">
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailEnabled">
+              <span><strong>Enable EmailJS Alert Notifications</strong></span>
+            </label>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgEmailPubKey">EmailJS Public Key:</label>
+              <input type="text" id="cfgEmailPubKey" class="form-input" placeholder="e.g. user_abcdef123456">
+            </div>
+            <div class="form-field">
+              <label for="cfgEmailServiceId">Service ID:</label>
+              <input type="text" id="cfgEmailServiceId" class="form-input" placeholder="e.g. service_telemetry">
+            </div>
+            <div class="form-field">
+              <label for="cfgEmailTemplateId">Template ID:</label>
+              <input type="text" id="cfgEmailTemplateId" class="form-input" placeholder="e.g. template_tyre_alert">
+            </div>
+            <div class="form-field">
+              <label for="cfgEmailRecipient">Recipient Email:</label>
+              <input type="email" id="cfgEmailRecipient" class="form-input" placeholder="fleet@example.com">
+            </div>
+            <div class="form-field">
+              <label for="cfgEmailCooldown">Alert Cooldown (Seconds):</label>
+              <input type="number" min="30" max="600" id="cfgEmailCooldown" class="form-input" value="90">
+              <span class="field-hint">Minimum interval between duplicate alerts</span>
+            </div>
+          </div>
+
+          <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailCritHealth" checked>
+              <span>Alert when Overall Health enters CRITICAL</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailTemp" checked>
+              <span>Alert on Temperature Limit Breach</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailPress" checked>
+              <span>Alert on Severe Pressure Deviation</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailVib" checked>
+              <span>Alert on Abnormal Harsh Vibration</span>
+            </label>
+          </div>
+
+          <div style="margin-top: 1rem; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+            <button type="button" class="btn-secondary" id="sendTestEmailBtn">
+              <i data-lucide="send" style="width: 14px; height: 14px;"></i>
+              <span>Send Test Email</span>
+            </button>
+            <span id="emailStatusText" class="field-hint" style="color: var(--text-secondary);">Email status: Idle</span>
+          </div>
+        </div>
+
+      </form>
+
+      <footer class="modal-footer">
+        <button type="button" class="btn-secondary" id="resetDefaultsBtn">Reset Recommended Defaults</button>
+        <button type="button" class="btn-primary" id="saveSettingsBtn">Save Configuration</button>
+      </footer>
+    </div>
+  </div>
+
+  <!-- Toast Notification System -->
+  <div class="toast-container" id="toastContainer" aria-live="polite"></div>
+
+  <!-- Application Footer -->
+  <footer class="app-footer">
+    <p><strong>TYRAVEX</strong> — Automotive Telemetry &amp; Tyre Health Monitoring System Prototype</p>
+    <p>Static Frontend on Vercel &bull; Web Serial USB Interface &bull; Real-Time Edge Processing</p>
+  </footer>
+
+  <!-- Application Scripts -->
+  <script src="serial.js"></script>
+  <script src="email-alerts.js"></script>
+  <script src="dashboard.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

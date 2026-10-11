@@ -1,0 +1,21 @@
+# Operating System Files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor & IDE Directories
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node / Build artifacts (if any used in future)
+node_modules/
+dist/
+build/
+.vercel/
+
+# Local Environment Variables & Logs
+.env
+.env.local
+*.log
