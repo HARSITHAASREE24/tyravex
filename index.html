@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>TYRAVEX | Real-Time Hardware Telemetry & Monitoring System</title>
-  <meta name="description" content="TYRAVEX is an automotive suspension telemetry and environmental monitoring system connecting an ESP32 microcontroller with Web Serial API for DHT11 temperature & humidity, BMP280 atmospheric pressure, vibration sensing, and HX711 suspension load cell measurement.">
+  <meta name="description" content="TYRAVEX is a real-time automotive suspension and tyre telemetry monitoring system connecting an ESP32 microcontroller with Web Serial API for DHT11 temperature & humidity, BMP280 tyre pressure, vibration sensing, and HX711 suspension load cell measurement.">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
@@ -224,10 +224,6 @@
 
         <!-- Contributing Warnings Box -->
         <div class="warnings-box" id="healthWarningsBox"></div>
-
-        <p class="disclaimer-subtext">
-          Experimental monitoring estimate derived from ambient thermal, mechanical vibration, and suspension load inputs.
-        </p>
       </article>
 
       <!-- CARD 2: AMBIENT TEMPERATURE (DHT11) -->
@@ -263,10 +259,6 @@
             <span class="metric-stat-val">DHT11 Digital (GPIO 4)</span>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          DHT11 measures ambient temperature near the suspension assembly. Does not directly measure internal tyre temperature.
-        </p>
       </article>
 
       <!-- CARD 3: RELATIVE HUMIDITY (DHT11) -->
@@ -302,18 +294,14 @@
             <span class="metric-stat-val">DHT11 Capacitive</span>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          Measures ambient relative humidity. Disconnection or invalid readings enter immediate error state with no fabricated values.
-        </p>
       </article>
 
-      <!-- CARD 4: TIRE PRESSURE (BMP280) -->
+      <!-- CARD 4: TYRE PRESSURE (BMP280) -->
       <article class="telemetry-card card-pressure" id="cardPressure">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="gauge" class="card-icon"></i>
-            <h2 class="card-title">Tire Pressure</h2>
+            <h2 class="card-title">Tyre Pressure</h2>
           </div>
           <!-- Unit Selector -->
           <div class="unit-switch-group" id="pressureUnitToggle">
@@ -347,10 +335,6 @@
             <span class="metric-stat-val">BMP280 (I2C 21/22)</span>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          Real-time tire pressure monitored at wheel assembly. Transducer telemetry converted to standard automotive tire units.
-        </p>
       </article>
 
       <!-- CARD 5: VIBRATION MONITORING (AO & DO) -->
@@ -386,18 +370,14 @@
             <span class="metric-stat-val" id="vibrationEventCountDisplay">0</span>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          Estimated vibration intensity from module AO (GPIO 34) &amp; DO (GPIO 35). Captures mechanical resonance at wheel hub.
-        </p>
       </article>
 
-      <!-- CARD 6: TIRE LOAD (SUSPENSION LOAD CELL + HX711) -->
+      <!-- CARD 6: TYRE LOAD (SUSPENSION LOAD CELL + HX711) -->
       <article class="telemetry-card card-load" id="cardSuspensionLoad">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="scale" class="card-icon"></i>
-            <h2 class="card-title">Tire Load (Suspension)</h2>
+            <h2 class="card-title">Tyre Load (Suspension)</h2>
           </div>
           <!-- Unit Selector -->
           <div class="unit-switch-group" id="loadUnitToggle">
@@ -445,10 +425,6 @@
             </button>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          Mechanical load applied on the tire through the suspension assembly (10 kg rated cell on DT: GPIO 18, SCK: GPIO 19).
-        </p>
       </article>
 
       <!-- CARD 7: SENSOR CONNECTION STATUS -->
@@ -472,7 +448,7 @@
             <span class="sensor-pill none" id="sensorDht11Pill">NO DATA</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">Tire Pressure Sensor (BMP280 I2C 21 / 22)</span>
+            <span class="sensor-name">Tyre Pressure Sensor (BMP280 I2C 21 / 22)</span>
             <span class="sensor-pill none" id="sensorBmp280Pill">NO DATA</span>
           </div>
           <div class="sensor-row">
@@ -503,10 +479,6 @@
             <span class="metric-stat-val" id="lastPacketTimeDisplay">Never</span>
           </div>
         </div>
-
-        <p class="disclaimer-subtext">
-          A connected USB port does not imply operational sensor probes. Each channel is validated independently.
-        </p>
       </article>
 
     </div><!-- End Telemetry Grid -->
@@ -565,19 +537,19 @@
           </div>
         </div>
 
-        <!-- Chart 3: Tire Pressure -->
+        <!-- Chart 3: Tyre Pressure -->
         <div class="chart-card">
           <div class="card-header">
             <div class="card-title-group">
               <i data-lucide="gauge" class="card-icon"></i>
-              <h3 class="card-title">Tire Pressure (<span id="chartPressureUnitLabel">PSI</span>)</h3>
+              <h3 class="card-title">Tyre Pressure (<span id="chartPressureUnitLabel">PSI</span>)</h3>
             </div>
           </div>
           <div class="chart-canvas-container">
             <canvas id="pressureChartCanvas"></canvas>
             <div class="chart-empty-state" id="pressureChartEmpty">
               <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
-              <span>Awaiting Tire Pressure Stream</span>
+              <span>Awaiting Tyre Pressure Stream</span>
             </div>
           </div>
         </div>
@@ -599,19 +571,19 @@
           </div>
         </div>
 
-        <!-- Chart 5: Tire Load -->
+        <!-- Chart 5: Tyre Load -->
         <div class="chart-card span-6">
           <div class="card-header">
             <div class="card-title-group">
               <i data-lucide="scale" class="card-icon"></i>
-              <h3 class="card-title">Tire Load (<span id="chartLoadUnitLabel">kg</span>)</h3>
+              <h3 class="card-title">Tyre Load (<span id="chartLoadUnitLabel">kg</span>)</h3>
             </div>
           </div>
           <div class="chart-canvas-container">
             <canvas id="loadChartCanvas"></canvas>
             <div class="chart-empty-state" id="loadChartEmpty">
               <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
-              <span>Awaiting HX711 Tire Load Telemetry</span>
+              <span>Awaiting HX711 Tyre Load Telemetry</span>
             </div>
           </div>
         </div>
@@ -652,7 +624,7 @@
               <th style="width: 110px;">Status</th>
               <th style="width: 85px;">Temp</th>
               <th style="width: 85px;">Humidity</th>
-              <th style="width: 95px;">Tire Press</th>
+              <th style="width: 95px;">Tyre Press</th>
               <th style="width: 90px;">Vibration</th>
               <th style="width: 90px;">Load (kg)</th>
               <th>Telemetry Event Description</th>
@@ -667,10 +639,6 @@
           </tbody>
         </table>
       </div>
-
-      <p class="disclaimer-subtext">
-        Notice: Log history is preserved in client browser memory and will reset upon page reload. No external server database is required for this static application.
-      </p>
     </section>
 
   </main>
@@ -706,9 +674,9 @@
           </div>
         </div>
 
-        <!-- Section 1: Environmental & Tire Pressure Parameters -->
+        <!-- Section 1: Environmental & Tyre Pressure Parameters -->
         <div>
-          <h3 class="settings-section-title">Environmental &amp; Tire Pressure Parameters</h3>
+          <h3 class="settings-section-title">Environmental &amp; Tyre Pressure Parameters</h3>
           <div class="form-grid-2">
             <div class="form-field">
               <label for="cfgTempWarn">Ambient Temp Warning Threshold (°C):</label>
@@ -729,14 +697,14 @@
               <input type="number" step="1" min="60" max="98" id="cfgHumidityWarnHigh" class="form-input" required>
             </div>
             <div class="form-field">
-              <label for="cfgPressureUnit">Tire Pressure Display Unit:</label>
+              <label for="cfgPressureUnit">Tyre Pressure Display Unit:</label>
               <select id="cfgPressureUnit" class="form-input">
                 <option value="PSI">PSI (Pounds per Square Inch)</option>
                 <option value="bar">bar</option>
                 <option value="kPa">kPa (Kilopascals)</option>
                 <option value="hPa">hPa (Hectopascals)</option>
               </select>
-              <span class="field-hint">Preferred tire pressure measurement unit.</span>
+              <span class="field-hint">Preferred tyre pressure measurement unit.</span>
             </div>
             <div class="form-field">
               <label for="cfgChartPoints">Chart Rolling Buffer Points:</label>

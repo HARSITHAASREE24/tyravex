@@ -468,6 +468,7 @@ void loop() {
       "{\"device\":\"TYRAVEX\","
       "\"temperature_c\":%s,"
       "\"humidity_percent\":%s,"
+      "\"tyre_pressure_hpa\":%s,"
       "\"tire_pressure_hpa\":%s,"
       "\"atmospheric_pressure_hpa\":%s,"
       "\"vibration_analog_raw\":%d,"
@@ -485,7 +486,8 @@ void loop() {
       tempStr,
       humStr,
       pressStr,
-      pressStr, // Backward compatibility for both tire_pressure_hpa and atmospheric_pressure_hpa
+      pressStr,
+      pressStr, // Backward compatibility for tyre_pressure_hpa, tire_pressure_hpa, and atmospheric_pressure_hpa
       vibAnalogRaw,
       vibDigital,
       vibEvents,

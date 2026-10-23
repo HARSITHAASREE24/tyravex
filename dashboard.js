@@ -253,11 +253,13 @@ class TyravexDashboardEngine {
       this.state.humidityStatus = this.state.isConnected ? 'SENSOR FAULT' : 'NO DATA';
     }
 
-    // 2. Process Tire Pressure (BMP280)
+    // 2. Process Tyre Pressure (BMP280)
     this.state.bmp280Valid = Boolean(packet.bmp280_valid);
-    const rawHpa = packet.tire_pressure_hpa !== undefined
-      ? packet.tire_pressure_hpa
-      : packet.atmospheric_pressure_hpa;
+    const rawHpa = packet.tyre_pressure_hpa !== undefined
+      ? packet.tyre_pressure_hpa
+      : (packet.tire_pressure_hpa !== undefined
+          ? packet.tire_pressure_hpa
+          : packet.atmospheric_pressure_hpa);
 
     if (this.state.bmp280Valid && rawHpa !== null && !isNaN(rawHpa)) {
       const pressVal = Number(rawHpa);
@@ -410,7 +412,7 @@ class TyravexDashboardEngine {
       warnings.push('DHT11 Temperature sensor offline.');
     }
     if (!this.state.pressureValid) {
-      warnings.push('Tire Pressure sensor (BMP280) offline.');
+      warnings.push('Tyre Pressure sensor (BMP280) offline.');
     }
     if (this.state.vibrationRaw === null) {
       warnings.push('Vibration sensor module reading unavailable.');
@@ -529,7 +531,7 @@ class TyravexDashboardEngine {
     if (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationCritRaw) {
       window.tyravexEmail.triggerAlert(
         'vibration',
-        'Harsh Tire / Suspension Vibration',
+        'Harsh Tyre / Suspension Vibration',
         `Vibration ADC raw reached ${this.state.vibrationRaw} (Threshold: ${this.settings.vibrationCritRaw}).`,
         snap
       );
@@ -538,8 +540,8 @@ class TyravexDashboardEngine {
     if (this.state.loadValid && this.state.loadKg !== null && this.state.loadKg >= this.settings.loadCritKg) {
       window.tyravexEmail.triggerAlert(
         'load',
-        'Excessive Suspension / Tire Load',
-        `Measured suspension load on tire is ${this.state.loadKg.toFixed(2)} kg (Capacity: 10 kg).`,
+        'Excessive Suspension / Tyre Load',
+        `Measured suspension load on tyre is ${this.state.loadKg.toFixed(2)} kg (Capacity: 10 kg).`,
         snap
       );
     }
@@ -643,7 +645,7 @@ class TyravexDashboardEngine {
       return;
     }
 
-    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Ambient Temp (°C)', 'Humidity (%RH)', 'Tire Pressure', 'Vibration Raw', 'Suspension Load (kg)', 'Description'];
+    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Ambient Temp (°C)', 'Humidity (%RH)', 'Tyre Pressure', 'Vibration Raw', 'Suspension Load (kg)', 'Description'];
     const rows = this.eventLogs.map((item) => [
       `"${item.timestamp}"`,
       `"${item.fullDate}"`,
@@ -694,7 +696,7 @@ class TyravexDashboardEngine {
       openedAt: new Date().toISOString()
     };
 
-    this.addEventLog('INFO', 'DEMO MODE activated (Simulated DHT11, Tire Pressure, Vibration, and HX711 streams).');
+    this.addEventLog('INFO', 'DEMO MODE activated (Simulated DHT11, Tyre Pressure, Vibration, and HX711 streams).');
 
     let simTick = 0;
     let eventAccumulator = 0;

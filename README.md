@@ -26,9 +26,9 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 +--------------------------------------------------------------------------+
 |                        TYRAVEX SENSOR HARDWARE                           |
 |  1. DHT11             -> Ambient Temperature (°C) & Humidity (%RH)       |
-|  2. BMP280            -> Tire Pressure Module (PSI / bar / kPa / hPa)     |
+|  2. BMP280            -> Tyre Pressure Module (PSI / bar / kPa / hPa)     |
 |  3. Vibration Sensor  -> Analog Displacement (AO) & Digital Switch (DO)  |
-|  4. 10 kg Load Cell   -> Tire Load on Suspension (HX711 DT: 18, SCK: 19)  |
+|  4. 10 kg Load Cell   -> Tyre Load on Suspension (HX711 DT: 18, SCK: 19)  |
 +------------------------------------+-------------------------------------+
                                      | (Digital, I2C, ADC & SPI Signals)
                                      v
@@ -57,9 +57,9 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 | - Card 1: Overall Monitoring Status|   | - High Ambient Temp Warning     |
 | - Card 2: Ambient Temperature °C   |   | - Humidity Limit Alert          |
 | - Card 3: Relative Humidity %RH    |   | - Harsh Mechanical Vibration    |
-| - Card 4: Tire Pressure            |   | - Excessive Suspension Load     |
+| - Card 4: Tyre Pressure            |   | - Excessive Suspension Load     |
 | - Card 5: Vibration Monitoring     |   | - Sensor Hardware Fault         |
-| - Card 6: Tire Load (Suspension)   |   | - Configurable Cooldown (90s)   |
+| - Card 6: Tyre Load (Suspension)   |   | - Configurable Cooldown (90s)   |
 | - Card 7: Sensor Connection Status |   +---------------------------------+
 | - Card 8: 5 Live Sensor Waveforms  |
 | - Card 9: Incident Log & CSV Export|
@@ -74,9 +74,9 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 | :--- | :--- | :--- | :--- | :--- |
 | **ESP32 Dev Board** | Standard 30-pin or 38-pin DevKit | USB to PC Host | 5V via USB | Microcontroller processing telemetry |
 | **DHT11** | Ambient Temperature & Relative Humidity | **GPIO 4** | **3.3V** & GND | Digital single-bus. Has internal pull-up; external 10kΩ to 3.3V recommended |
-| **BMP280** | Tire Pressure Sensing | **SDA: GPIO 21**<br>**SCL: GPIO 22** | **3.3V** & GND | Hardware I2C bus. Automatically checks address `0x76` and `0x77` |
+| **BMP280** | Tyre Pressure Sensing | **SDA: GPIO 21**<br>**SCL: GPIO 22** | **3.3V** & GND | Hardware I2C bus. Automatically checks address `0x76` and `0x77` |
 | **Vibration Sensor** | Analog level & Digital pulse counter | **AO: GPIO 34** (ADC1)<br>**DO: GPIO 35** | **3.3V** & GND | GPIO 34/35 are input-only pins on ESP32 ADC1 (no WiFi ADC2 conflicts) |
-| **10 kg Load Cell** | Tire load sensing via suspension | Connects to HX711 E+, E-, A+, A- | Powered by HX711 | Red: E+, Black: E-, White: A-, Green: A+ |
+| **10 kg Load Cell** | Tyre load sensing via suspension | Connects to HX711 E+, E-, A+, A- | Powered by HX711 | Red: E+, Black: E-, White: A-, Green: A+ |
 | **HX711 Amplifier** | 24-bit ADC for load cell | **DT: GPIO 18**<br>**SCK: GPIO 19** | **3.3V** & GND | DT: Data Output from HX711; SCK: Clock input to HX711 |
 | **Indicator LED** | Telemetry Heartbeat | **GPIO 2** | Internal | Builtin dev board LED, toggles on each telemetry packet |
 
@@ -89,12 +89,12 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 
 ## 3. Crucial Hardware Disclaimers & Design Truths
 
-1. **Tire Pressure Monitoring:**
-   - The **BMP280 sensor serves as the dedicated Tire Pressure probe**, transmitting readings convertible to standard automotive units (**PSI**, **bar**, **kPa**, **hPa**), defaulting to PSI.
+1. **Tyre Pressure Monitoring:**
+   - The **BMP280 sensor serves as the dedicated Tyre Pressure probe**, transmitting readings convertible to standard automotive units (**PSI**, **bar**, **kPa**, **hPa**), defaulting to PSI.
 2. **Ambient Temperature:**
    - The **DHT11 measures ambient air temperature and relative humidity** in the vicinity of the sensor installation point.
-3. **Tire Load from Suspension:**
-   - The **10 kg load cell measures dynamic suspension load applied directly to the tire**.
+3. **Tyre Load from Suspension:**
+   - The **10 kg load cell measures dynamic suspension load applied directly to the tyre**.
    - Raw counts (~24k to 25k unloaded baseline) convert into dynamic applied load in kg and N (moving to ~64k - 100k+ counts under active vehicle suspension pressure).
 4. **No Fabricated Data:**
    - When a sensor is disconnected or invalid, the system transmits `null` and sets `<sensor>_valid: false`. The dashboard visibly displays `SENSOR FAULT` or `UNCALIBRATED`.
@@ -167,6 +167,7 @@ The firmware outputs one newline-delimited JSON line per second (`115200` baud):
   "device": "TYRAVEX",
   "temperature_c": 30.5,
   "humidity_percent": 55.0,
+  "tyre_pressure_hpa": 1008.2,
   "tire_pressure_hpa": 1008.2,
   "atmospheric_pressure_hpa": 1008.2,
   "vibration_analog_raw": 1250,
@@ -187,12 +188,12 @@ The firmware outputs one newline-delimited JSON line per second (`115200` baud):
 ### Field Definitions:
 - `temperature_c` *(float | null)*: Ambient temperature in °C from DHT11.
 - `humidity_percent` *(float | null)*: Relative humidity in %RH from DHT11.
-- `tire_pressure_hpa` *(float | null)*: Tire pressure in hPa from BMP280 (converted to PSI/bar/kPa/hPa in UI).
+- `tyre_pressure_hpa` *(float | null)*: Tyre pressure in hPa from BMP280 (converted to PSI/bar/kPa/hPa in UI).
 - `vibration_analog_raw` *(int)*: Raw 12-bit ADC value (0 - 4095) from Vibration AO (GPIO 34).
 - `vibration_digital` *(int)*: Digital trigger status (0 = quiet, 1 = active) from Vibration DO (GPIO 35).
 - `vibration_event_count` *(unsigned long)*: Cumulative interrupt-driven count of vibration trigger pulses.
 - `load_raw` *(long)*: Raw transducer counts from HX711 (DT: 18, SCK: 19; ~24.5k unloaded).
-- `load_kg` *(float | null)*: Converted mechanical tire load in kg applied through the suspension.
+- `load_kg` *(float | null)*: Converted mechanical tyre load in kg applied through the suspension.
 - `load_calibrated` *(boolean)*: `true` if tare and scale factors are calibrated in NVS.
 - `dht11_valid` *(boolean)*: `true` when DHT11 provides valid temperature and humidity readings.
 - `bmp280_valid` *(boolean)*: `true` when BMP280 is detected and responding over I2C.

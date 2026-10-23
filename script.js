@@ -148,14 +148,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
-  // 3. Tire Pressure Chart (BMP280)
+  // 3. Tyre Pressure Chart (BMP280)
   const pressureCanvas = document.getElementById('pressureChartCanvas').getContext('2d');
   const pressureChart = new Chart(pressureCanvas, {
     type: 'line',
     data: {
       labels: [],
       datasets: [{
-        label: 'Tire Pressure',
+        label: 'Tyre Pressure',
         data: [],
         borderColor: '#38bdf8',
         backgroundColor: 'rgba(56, 189, 248, 0.08)',
@@ -435,7 +435,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const newUnit = btn.dataset.unit;
       window.tyravexEngine.saveSettings({ pressureUnit: newUnit });
       document.getElementById('chartPressureUnitLabel').textContent = newUnit;
-      showToast('info', `Tire pressure unit switched to ${newUnit}.`);
+      showToast('info', `Tyre pressure unit switched to ${newUnit}.`);
     });
   });
 
@@ -661,7 +661,7 @@ document.addEventListener('DOMContentLoaded', () => {
       humDewEl.textContent = '--';
     }
 
-    // --- CARD 4: Tire Pressure (BMP280) ---
+    // --- CARD 4: Tyre Pressure (BMP280) ---
     const pressDisp = document.getElementById('pressureCurrentDisplay');
     const pressUnitEl = document.getElementById('pressureCurrentUnit');
     const pressStatusEl = document.getElementById('pressureStatusText');
@@ -672,7 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (state.pressureValid && state.tirePressureDisplay !== null) {
       pressDisp.textContent = state.tirePressureDisplay;
-      pressStatusEl.textContent = 'BMP280 OK (Tire Probe)';
+      pressStatusEl.textContent = 'BMP280 OK (Tyre Probe)';
       pressTrendEl.textContent = state.pressureTrend;
     } else {
       pressDisp.textContent = '--';
@@ -716,7 +716,7 @@ document.addEventListener('DOMContentLoaded', () => {
     vibDigitalEl.textContent = state.vibrationDigitalStatus;
     vibEventsEl.textContent = state.vibrationEventCount;
 
-    // --- CARD 6: Tire Load on Suspension (10 kg Load Cell + HX711) ---
+    // --- CARD 6: Tyre Load on Suspension (10 kg Load Cell + HX711) ---
     const loadDisp = document.getElementById('loadCurrentDisplay');
     const loadUnitEl = document.getElementById('loadCurrentUnit');
     const loadCalibEl = document.getElementById('loadCalibrationStatus');
@@ -856,7 +856,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 3. Pressure Chart
       pressureChart.data.labels = chartData.labels;
-      pressureChart.data.datasets[0].label = `Tire Pressure (${curPressUnit})`;
+      pressureChart.data.datasets[0].label = `Tyre Pressure (${curPressUnit})`;
       pressureChart.data.datasets[0].data = chartData.pressure;
       pressureChart.update('none');
 
@@ -867,7 +867,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // 5. Load Chart
       loadChart.data.labels = chartData.labels;
-      loadChart.data.datasets[0].label = `Tire Load (${curLoadUnit})`;
+      loadChart.data.datasets[0].label = `Tyre Load (${curLoadUnit})`;
       const convertedLoadHistory = chartData.load.map(val => {
         if (val === null) return null;
         return curLoadUnit === 'N' ? Number((val * 9.80665).toFixed(2)) : val;
