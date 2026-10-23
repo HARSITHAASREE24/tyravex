@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>TYRAVEX | Real-Time Tyre Telemetry & Health Monitoring</title>
-  <meta name="description" content="TYRAVEX is an automotive telemetry and tyre health monitoring system connecting an ESP32 microcontroller with Web Serial API for live temperature, pressure, and road impact analysis.">
+  <title>TYRAVEX | Real-Time Hardware Telemetry & Monitoring System</title>
+  <meta name="description" content="TYRAVEX is an automotive suspension telemetry and environmental monitoring system connecting an ESP32 microcontroller with Web Serial API for DHT11 temperature & humidity, BMP280 atmospheric pressure, vibration sensing, and HX711 suspension load cell measurement.">
 
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
@@ -58,20 +58,19 @@
           </filter>
         </defs>
 
-        <!-- Tyre Icon Symbol -->
+        <!-- Sensor Ring Symbol -->
         <g transform="translate(4, 4)">
-          <!-- Outer Tyre Tread Ring -->
           <circle cx="28" cy="28" r="26" stroke="var(--logo-hub-stroke)" stroke-width="3" fill="var(--logo-hub-bg)" />
           
-          <!-- Tread Notches -->
+          <!-- Radial Sensor Markers -->
           <path d="M28 2 L28 6 M28 50 L28 54 M2 28 L6 28 M50 28 L54 28 M9.6 9.6 L12.5 12.5 M43.5 43.5 L46.4 46.4 M9.6 46.4 L12.5 43.5 M43.5 12.5 L46.4 9.6" 
                 stroke="var(--accent-cyan)" stroke-width="2.5" stroke-linecap="round" opacity="0.85" />
           
-          <!-- Telemetry Arc (Dynamic Sensor Wave) -->
+          <!-- Telemetry Dynamic Sensor Wave -->
           <path d="M12 28 A16 16 0 1 1 44 28" stroke="url(#tyreGrad)" stroke-width="3.5" stroke-linecap="round" fill="none" filter="url(#glow)"/>
           <path d="M16 28 A12 12 0 0 0 40 28" stroke="var(--accent-cyan)" stroke-width="1.5" stroke-linecap="round" stroke-dasharray="3 3" fill="none" opacity="0.7"/>
 
-          <!-- Wheel Hub Center Sensor Dot -->
+          <!-- Center Sensor Dot -->
           <circle cx="28" cy="28" r="6" fill="var(--bg-secondary)" stroke="var(--accent-cyan)" stroke-width="2" />
           <circle cx="28" cy="28" r="2.5" fill="var(--accent-cyan)" />
           
@@ -89,7 +88,7 @@
           </text>
         </g>
       </svg>
-      <span class="brand-tagline">Monitor Every Ride. Protect Every Tyre.</span>
+      <span class="brand-tagline">Real-Time Sensor Telemetry &amp; Suspension Load Monitoring</span>
     </div>
 
     <div class="header-actions">
@@ -111,7 +110,7 @@
       </button>
 
       <!-- Settings Trigger Button -->
-      <button class="btn-icon" id="openSettingsBtn" title="Telemetry &amp; Alert Settings" aria-label="Open Settings">
+      <button class="btn-icon" id="openSettingsBtn" title="Telemetry &amp; Calibration Settings" aria-label="Open Settings">
         <i data-lucide="sliders-horizontal" style="width: 18px; height: 18px;"></i>
       </button>
     </div>
@@ -173,21 +172,21 @@
   <!-- Active Demo Mode Indicator Banner -->
   <div class="demo-mode-banner" id="demoBanner" style="display: none;">
     <i data-lucide="alert-triangle" style="width: 14px; height: 14px;"></i>
-    <span><strong>DEMO MODE ACTIVE:</strong> Synthesizing tyre physics telemetry for interface demonstration. Readings do not reflect physical sensors.</span>
+    <span><strong>DEMO MODE ACTIVE:</strong> Synthesizing live multi-sensor telemetry (DHT11, BMP280, Vibration, HX711) for interface demonstration. Readings do not reflect physical sensors.</span>
   </div>
 
   <!-- Main Dashboard Container -->
   <main class="dashboard-container">
 
-    <!-- Top Telemetry Row: Cards A through F -->
+    <!-- Top Telemetry Row: Required Cards 1 through 7 -->
     <div class="telemetry-grid">
 
-      <!-- CARD A: OVERALL TYRE HEALTH -->
+      <!-- CARD 1: OVERALL MONITORING STATUS -->
       <article class="telemetry-card card-health" id="cardOverallHealth">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="shield-check" class="card-icon"></i>
-            <h2 class="card-title">Overall Tyre Health</h2>
+            <h2 class="card-title">Overall Monitoring Status</h2>
           </div>
           <span class="card-status-badge" id="healthStatusBadge">INSUFFICIENT DATA</span>
         </header>
@@ -201,7 +200,7 @@
             </svg>
             <div class="gauge-center-content">
               <div class="gauge-score-value" id="healthScoreDisplay">--</div>
-              <div class="gauge-score-label">Health Score</div>
+              <div class="gauge-score-label">System Index</div>
             </div>
           </div>
           <p class="health-condition-text" id="healthConditionDisplay">Awaiting Sensor Telemetry</p>
@@ -210,29 +209,33 @@
         <!-- Meta Details -->
         <div class="health-meta-rows">
           <div class="health-meta-row">
-            <span class="health-meta-label">Health Trend:</span>
-            <span class="health-meta-val" id="healthTrendDisplay">STABLE</span>
+            <span class="health-meta-label">ESP32 Connection:</span>
+            <span class="health-meta-val" id="monitoringConnDisplay">DISCONNECTED</span>
           </div>
           <div class="health-meta-row">
-            <span class="health-meta-label">Last Updated:</span>
+            <span class="health-meta-label">Sensor Availability:</span>
+            <span class="health-meta-val" id="monitoringAvailabilityDisplay">0 / 4 Online</span>
+          </div>
+          <div class="health-meta-row">
+            <span class="health-meta-label">Last Received Reading:</span>
             <span class="health-meta-val" id="healthLastUpdatedDisplay">Never</span>
           </div>
         </div>
 
-        <!-- Contributing Sensor Warnings Box -->
+        <!-- Contributing Warnings Box -->
         <div class="warnings-box" id="healthWarningsBox"></div>
 
         <p class="disclaimer-subtext">
-          Experimental estimate based on configured sensor rules. Not certified tyre degradation measurement.
+          Experimental monitoring estimate derived from ambient thermal, mechanical vibration, and suspension load inputs.
         </p>
       </article>
 
-      <!-- CARD B: TYRE TEMPERATURE -->
+      <!-- CARD 2: AMBIENT TEMPERATURE (DHT11) -->
       <article class="telemetry-card card-temp" id="cardTemperature">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="thermometer" class="card-icon"></i>
-            <h2 class="card-title">Tyre Temperature</h2>
+            <h2 class="card-title">Ambient Temperature</h2>
           </div>
           <span class="card-status-badge" id="tempStatusBadge">NO DATA</span>
         </header>
@@ -253,31 +256,71 @@
           </div>
           <div class="metric-stat-item">
             <span class="metric-stat-label">Trend</span>
-            <span class="metric-stat-val" id="tempTrendDisplay">Steady</span>
+            <span class="metric-stat-val" id="tempTrendDisplay">Stable</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Sensor Circuit</span>
-            <span class="metric-stat-val">DS18B20 OneWire</span>
+            <span class="metric-stat-label">Sensor Module</span>
+            <span class="metric-stat-val">DHT11 Digital (GPIO 4)</span>
           </div>
         </div>
 
         <p class="disclaimer-subtext">
-          Disconnection or invalid reading enters immediate error state. No synthesized fallbacks.
+          DHT11 measures ambient temperature near the suspension assembly. Does not directly measure internal tyre temperature.
         </p>
       </article>
 
-      <!-- CARD C: TYRE PRESSURE -->
+      <!-- CARD 3: RELATIVE HUMIDITY (DHT11) -->
+      <article class="telemetry-card card-humidity" id="cardHumidity">
+        <header class="card-header">
+          <div class="card-title-group">
+            <i data-lucide="droplets" class="card-icon"></i>
+            <h2 class="card-title">Relative Humidity</h2>
+          </div>
+          <span class="card-status-badge" id="humidityStatusBadge">NO DATA</span>
+        </header>
+
+        <div class="metric-big-display">
+          <span class="metric-number" id="humidityCurrentDisplay">--</span>
+          <span class="metric-unit">%RH</span>
+        </div>
+
+        <div class="metric-stats-grid">
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Reading Status</span>
+            <span class="metric-stat-val" id="humidityStatusDisplay">Awaiting Sensor</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Safe Range</span>
+            <span class="metric-stat-val">25% - 80% RH</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Dew Point Status</span>
+            <span class="metric-stat-val" id="humidityDewPointDisplay">Nominal</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Sensor Probe</span>
+            <span class="metric-stat-val">DHT11 Capacitive</span>
+          </div>
+        </div>
+
+        <p class="disclaimer-subtext">
+          Measures ambient relative humidity. Disconnection or invalid readings enter immediate error state with no fabricated values.
+        </p>
+      </article>
+
+      <!-- CARD 4: TIRE PRESSURE (BMP280) -->
       <article class="telemetry-card card-pressure" id="cardPressure">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="gauge" class="card-icon"></i>
-            <h2 class="card-title">Tyre Pressure</h2>
+            <h2 class="card-title">Tire Pressure</h2>
           </div>
           <!-- Unit Selector -->
           <div class="unit-switch-group" id="pressureUnitToggle">
             <button class="unit-btn active" data-unit="PSI">PSI</button>
             <button class="unit-btn" data-unit="bar">bar</button>
             <button class="unit-btn" data-unit="kPa">kPa</button>
+            <button class="unit-btn" data-unit="hPa">hPa</button>
           </div>
         </header>
 
@@ -288,29 +331,29 @@
 
         <div class="metric-stats-grid">
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Target Pressure</span>
+            <span class="metric-stat-label">Sensor Status</span>
+            <span class="metric-stat-val" id="pressureStatusText">AWAITING SENSOR</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Pressure Trend</span>
+            <span class="metric-stat-val" id="pressureTrendDisplay">Steady</span>
+          </div>
+          <div class="metric-stat-item">
+            <span class="metric-stat-label">Target Cold Pressure</span>
             <span class="metric-stat-val" id="pressureTargetDisplay">32.0 PSI</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Deviation (ΔP)</span>
-            <span class="metric-stat-val" id="pressureDeviationDisplay">--</span>
-          </div>
-          <div class="metric-stat-item">
-            <span class="metric-stat-label">Status</span>
-            <span class="metric-stat-val" id="pressureStatusText">NOT CONFIGURED</span>
-          </div>
-          <div class="metric-stat-item">
-            <span class="metric-stat-label">Transducer</span>
-            <span class="metric-stat-val" id="pressureSensorState">UNCALIBRATED</span>
+            <span class="metric-stat-label">Interface</span>
+            <span class="metric-stat-val">BMP280 (I2C 21/22)</span>
           </div>
         </div>
 
         <p class="disclaimer-subtext">
-          Displays RAW / UNCALIBRATED until confirmed tyre pressure transducer is connected and zero-point calibrated.
+          Real-time tire pressure monitored at wheel assembly. Transducer telemetry converted to standard automotive tire units.
         </p>
       </article>
 
-      <!-- CARD D: VIBRATION MONITORING -->
+      <!-- CARD 5: VIBRATION MONITORING (AO & DO) -->
       <article class="telemetry-card card-vibration" id="cardVibration">
         <header class="card-header">
           <div class="card-title-group">
@@ -322,78 +365,98 @@
 
         <div class="metric-big-display">
           <span class="metric-number" id="vibrationCurrentDisplay">--</span>
-          <span class="metric-unit" id="vibrationCurrentUnit">g</span>
+          <span class="metric-unit" id="vibrationCurrentUnit">% (Norm)</span>
         </div>
 
         <div class="metric-stats-grid">
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Peak Vibration</span>
-            <span class="metric-stat-val" id="vibrationPeakDisplay">-- g</span>
+            <span class="metric-stat-label">Raw Analog Reading (AO)</span>
+            <span class="metric-stat-val" id="vibrationRawDisplay">-- / 4095</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Abnormal Events</span>
-            <span class="metric-stat-val" id="vibrationAbnormalDisplay">0</span>
+            <span class="metric-stat-label">Peak Analog Reading</span>
+            <span class="metric-stat-val" id="vibrationPeakDisplay">--</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Vibration Status</span>
-            <span class="metric-stat-val" id="vibrationStateDisplay">Awaiting Sensor</span>
+            <span class="metric-stat-label">Digital State (DO)</span>
+            <span class="metric-stat-val" id="vibrationDigitalDisplay">Quiet (0)</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Measurement Type</span>
-            <span class="metric-stat-val">3-Axis Magnitude</span>
+            <span class="metric-stat-label">Detected Vibration Events</span>
+            <span class="metric-stat-val" id="vibrationEventCountDisplay">0</span>
           </div>
         </div>
 
         <p class="disclaimer-subtext">
-          Measures wheel-well vibration intensity. Does not derive vehicle load from vibration alone.
+          Estimated vibration intensity from module AO (GPIO 34) &amp; DO (GPIO 35). Captures mechanical resonance at wheel hub.
         </p>
       </article>
 
-      <!-- CARD E: ROAD IMPACT ANALYSIS -->
-      <article class="telemetry-card card-road" id="cardRoadImpact">
+      <!-- CARD 6: TIRE LOAD (SUSPENSION LOAD CELL + HX711) -->
+      <article class="telemetry-card card-load" id="cardSuspensionLoad">
         <header class="card-header">
           <div class="card-title-group">
-            <i data-lucide="zap" class="card-icon"></i>
-            <h2 class="card-title">Road Impact Analysis</h2>
+            <i data-lucide="scale" class="card-icon"></i>
+            <h2 class="card-title">Tire Load (Suspension)</h2>
           </div>
-          <span class="card-status-badge" id="roadConditionBadge">INSUFFICIENT DATA</span>
+          <!-- Unit Selector -->
+          <div class="unit-switch-group" id="loadUnitToggle">
+            <button class="unit-btn active" data-unit="kg">kg</button>
+            <button class="unit-btn" data-unit="N">N</button>
+          </div>
         </header>
 
         <div class="metric-big-display">
-          <span class="metric-number" id="impactCountDisplay">0</span>
-          <span class="metric-unit">Events</span>
+          <span class="metric-number" id="loadCurrentDisplay">--</span>
+          <span class="metric-unit" id="loadCurrentUnit">kg</span>
         </div>
 
         <div class="metric-stats-grid">
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Peak Impact Spike</span>
-            <span class="metric-stat-val" id="impactPeakDisplay">-- g</span>
+            <span class="metric-stat-label">Calibration Status</span>
+            <span class="metric-stat-val" id="loadCalibrationStatus">READY</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Road Surface Profile</span>
-            <span class="metric-stat-val" id="roadProfileDisplay">Insufficient Data</span>
+            <span class="metric-stat-label">Peak Load</span>
+            <span class="metric-stat-val" id="loadPeakDisplay">-- kg</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Impact Threshold</span>
-            <span class="metric-stat-val" id="impactThresholdDisplay">≥ 2.0 g</span>
+            <span class="metric-stat-label">Raw Transducer Units</span>
+            <span class="metric-stat-val" id="loadRawDisplay">-- counts</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Classification</span>
-            <span class="metric-stat-val">Prototype Estimate</span>
+            <span class="metric-stat-label">Load Trend</span>
+            <span class="metric-stat-val" id="loadTrendDisplay">Stable</span>
+          </div>
+        </div>
+
+        <!-- Quick Hardware Calibration Actions -->
+        <div class="cal-controls-row">
+          <button class="btn-cal-action" id="cardTareBtn" title="Tare unloaded scale (Zero Offset)">
+            <i data-lucide="corner-down-right" style="width: 12px; height: 12px;"></i>
+            <span>Tare (Zero)</span>
+          </button>
+          <div style="display: flex; align-items: center; gap: 0.3rem;">
+            <input type="number" id="cardCalWeightInput" class="cal-input-compact" value="1.0" min="0.1" max="10.0" step="0.1" title="Known Weight in kg">
+            <span style="font-size: 0.72rem; color: var(--text-muted); font-family: var(--font-mono);">kg</span>
+            <button class="btn-cal-action" id="cardCalibrateBtn" title="Calibrate with known weight on load cell">
+              <i data-lucide="check" style="width: 12px; height: 12px;"></i>
+              <span>Calibrate</span>
+            </button>
           </div>
         </div>
 
         <p class="disclaimer-subtext">
-          Road condition classification is an estimate derived from dynamic acceleration peaks.
+          Mechanical load applied on the tire through the suspension assembly (10 kg rated cell on DT: GPIO 18, SCK: GPIO 19).
         </p>
       </article>
 
-      <!-- CARD F: SENSOR HEALTH & COMMUNICATION -->
+      <!-- CARD 7: SENSOR CONNECTION STATUS -->
       <article class="telemetry-card card-sensor-health" id="cardSensorHealth">
         <header class="card-header">
           <div class="card-title-group">
             <i data-lucide="heart-pulse" class="card-icon"></i>
-            <h2 class="card-title">Sensor Health</h2>
+            <h2 class="card-title">Sensor Connection Status</h2>
           </div>
           <span class="card-status-badge" id="commStatusBadge">IDLE</span>
         </header>
@@ -401,20 +464,24 @@
         <!-- Sensor Diagnostics Matrix -->
         <div class="sensor-status-matrix">
           <div class="sensor-row">
-            <span class="sensor-name">ESP32 USB UART</span>
+            <span class="sensor-name">ESP32 USB UART Interface</span>
             <span class="sensor-pill none" id="sensorEsp32Pill">DISCONNECTED</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">DS18B20 Temperature</span>
-            <span class="sensor-pill none" id="sensorTempPill">NO DATA</span>
+            <span class="sensor-name">DHT11 Temperature &amp; Humidity (GPIO 4)</span>
+            <span class="sensor-pill none" id="sensorDht11Pill">NO DATA</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">Pressure Transducer</span>
-            <span class="sensor-pill none" id="sensorPressurePill">UNCALIBRATED</span>
+            <span class="sensor-name">Tire Pressure Sensor (BMP280 I2C 21 / 22)</span>
+            <span class="sensor-pill none" id="sensorBmp280Pill">NO DATA</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">Vibration Sensor</span>
+            <span class="sensor-name">Vibration Sensor (AO GPIO 34 / DO GPIO 35)</span>
             <span class="sensor-pill none" id="sensorVibrationPill">NO DATA</span>
+          </div>
+          <div class="sensor-row">
+            <span class="sensor-name">Suspension Load Cell (HX711 DT 18 / SCK 19)</span>
+            <span class="sensor-pill none" id="sensorHx711Pill">READY</span>
           </div>
         </div>
 
@@ -444,12 +511,12 @@
 
     </div><!-- End Telemetry Grid -->
 
-    <!-- CARD G: LIVE SENSOR CHARTS -->
+    <!-- CARD 8: LIVE SENSOR CHARTS -->
     <section class="charts-section" id="chartsSection">
       <div class="section-header-bar">
         <h2 class="section-title">
           <i data-lucide="line-chart" style="width: 20px; height: 20px; color: var(--accent-cyan);"></i>
-          Live Telemetry Waveforms
+          Live Sensor Telemetry Waveforms
         </h2>
         <div class="chart-controls-group">
           <button class="btn-secondary" id="pauseChartsBtn">
@@ -469,55 +536,90 @@
           <div class="card-header">
             <div class="card-title-group">
               <i data-lucide="thermometer" class="card-icon"></i>
-              <h3 class="card-title">Temperature Over Time (°C)</h3>
+              <h3 class="card-title">Ambient Temperature (°C)</h3>
             </div>
           </div>
           <div class="chart-canvas-container">
             <canvas id="tempChartCanvas"></canvas>
             <div class="chart-empty-state" id="tempChartEmpty">
               <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
-              <span>Awaiting Temperature Stream</span>
+              <span>Awaiting DHT11 Temperature Stream</span>
             </div>
           </div>
         </div>
 
-        <!-- Chart 2: Pressure -->
+        <!-- Chart 2: Humidity -->
+        <div class="chart-card">
+          <div class="card-header">
+            <div class="card-title-group">
+              <i data-lucide="droplets" class="card-icon"></i>
+              <h3 class="card-title">Relative Humidity (%RH)</h3>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="humidityChartCanvas"></canvas>
+            <div class="chart-empty-state" id="humidityChartEmpty">
+              <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
+              <span>Awaiting DHT11 Humidity Stream</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chart 3: Tire Pressure -->
         <div class="chart-card">
           <div class="card-header">
             <div class="card-title-group">
               <i data-lucide="gauge" class="card-icon"></i>
-              <h3 class="card-title">Pressure Over Time (<span id="chartPressureUnitLabel">PSI</span>)</h3>
+              <h3 class="card-title">Tire Pressure (<span id="chartPressureUnitLabel">PSI</span>)</h3>
             </div>
           </div>
           <div class="chart-canvas-container">
             <canvas id="pressureChartCanvas"></canvas>
             <div class="chart-empty-state" id="pressureChartEmpty">
               <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
-              <span>Awaiting Calibrated Pressure Stream</span>
+              <span>Awaiting Tire Pressure Stream</span>
             </div>
           </div>
         </div>
 
-        <!-- Chart 3: Vibration -->
-        <div class="chart-card">
+        <!-- Chart 4: Vibration Intensity -->
+        <div class="chart-card span-6">
           <div class="card-header">
             <div class="card-title-group">
               <i data-lucide="activity" class="card-icon"></i>
-              <h3 class="card-title">Vibration Magnitude (g)</h3>
+              <h3 class="card-title">Vibration Intensity (% Normalized)</h3>
             </div>
           </div>
           <div class="chart-canvas-container">
             <canvas id="vibrationChartCanvas"></canvas>
             <div class="chart-empty-state" id="vibrationChartEmpty">
               <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
-              <span>Awaiting Vibration Telemetry</span>
+              <span>Awaiting Vibration Module Telemetry</span>
             </div>
           </div>
         </div>
+
+        <!-- Chart 5: Tire Load -->
+        <div class="chart-card span-6">
+          <div class="card-header">
+            <div class="card-title-group">
+              <i data-lucide="scale" class="card-icon"></i>
+              <h3 class="card-title">Tire Load (<span id="chartLoadUnitLabel">kg</span>)</h3>
+            </div>
+          </div>
+          <div class="chart-canvas-container">
+            <canvas id="loadChartCanvas"></canvas>
+            <div class="chart-empty-state" id="loadChartEmpty">
+              <i data-lucide="inbox" style="width: 24px; height: 24px;"></i>
+              <span>Awaiting HX711 Tire Load Telemetry</span>
+            </div>
+          </div>
+        </div>
+
       </div>
     </section>
 
-    <!-- CARD H: LIVE EVENT LOG -->
+    <!-- CARD 9: LIVE EVENT LOG -->
     <section class="log-section" id="logSection">
       <div class="section-header-bar">
         <h2 class="section-title">
@@ -545,18 +647,20 @@
         <table class="telemetry-table" id="eventLogTable">
           <thead>
             <tr>
-              <th style="width: 90px;">Time</th>
-              <th style="width: 90px;">Severity</th>
-              <th style="width: 120px;">Health Status</th>
-              <th style="width: 100px;">Temp</th>
-              <th style="width: 110px;">Pressure</th>
-              <th style="width: 100px;">Vibration</th>
+              <th style="width: 85px;">Time</th>
+              <th style="width: 85px;">Severity</th>
+              <th style="width: 110px;">Status</th>
+              <th style="width: 85px;">Temp</th>
+              <th style="width: 85px;">Humidity</th>
+              <th style="width: 95px;">Tire Press</th>
+              <th style="width: 90px;">Vibration</th>
+              <th style="width: 90px;">Load (kg)</th>
               <th>Telemetry Event Description</th>
             </tr>
           </thead>
           <tbody id="eventLogTableBody">
             <tr>
-              <td colspan="7" class="table-empty-row">
+              <td colspan="9" class="table-empty-row">
                 No telemetry events logged yet. Connect ESP32 or toggle Demo Mode to stream data.
               </td>
             </tr>
@@ -565,7 +669,7 @@
       </div>
 
       <p class="disclaimer-subtext">
-        Notice: Log history is preserved in client browser memory and will reset upon page reload. No server database is required for this prototype.
+        Notice: Log history is preserved in client browser memory and will reset upon page reload. No external server database is required for this static application.
       </p>
     </section>
 
@@ -577,7 +681,7 @@
       <header class="modal-header">
         <h2 class="modal-title" id="settingsModalTitle">
           <i data-lucide="sliders" style="width: 18px; height: 18px; color: var(--accent-cyan);"></i>
-          TYRAVEX System &amp; Alert Configuration
+          TYRAVEX System &amp; Sensor Configuration
         </h2>
         <button class="btn-icon" id="closeSettingsBtn" aria-label="Close Settings">
           <i data-lucide="x" style="width: 18px; height: 18px;"></i>
@@ -602,83 +706,99 @@
           </div>
         </div>
 
-        <!-- Section 1: Pressure & Target Parameters -->
+        <!-- Section 1: Environmental & Tire Pressure Parameters -->
         <div>
-          <h3 class="settings-section-title">Tyre Calibration Targets</h3>
+          <h3 class="settings-section-title">Environmental &amp; Tire Pressure Parameters</h3>
           <div class="form-grid-2">
             <div class="form-field">
-              <label for="cfgTargetPressure">Target Tyre Pressure (PSI):</label>
-              <input type="number" step="0.5" min="15" max="80" id="cfgTargetPressure" class="form-input" required>
-              <span class="field-hint">Specify vehicle manufacturer cold tyre pressure.</span>
+              <label for="cfgTempWarn">Ambient Temp Warning Threshold (°C):</label>
+              <input type="number" step="1" min="20" max="60" id="cfgTempWarn" class="form-input" required>
+              <span class="field-hint">Ambient temperature warning (default: 45°C)</span>
             </div>
             <div class="form-field">
-              <label for="cfgPressureUnit">Preferred Display Unit:</label>
+              <label for="cfgTempCrit">Ambient Temp Critical Threshold (°C):</label>
+              <input type="number" step="1" min="30" max="80" id="cfgTempCrit" class="form-input" required>
+              <span class="field-hint">Critical thermal limit (default: 60°C)</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgHumidityWarnLow">Low Humidity Threshold (%RH):</label>
+              <input type="number" step="1" min="5" max="40" id="cfgHumidityWarnLow" class="form-input" required>
+            </div>
+            <div class="form-field">
+              <label for="cfgHumidityWarnHigh">High Humidity Threshold (%RH):</label>
+              <input type="number" step="1" min="60" max="98" id="cfgHumidityWarnHigh" class="form-input" required>
+            </div>
+            <div class="form-field">
+              <label for="cfgPressureUnit">Tire Pressure Display Unit:</label>
               <select id="cfgPressureUnit" class="form-input">
                 <option value="PSI">PSI (Pounds per Square Inch)</option>
                 <option value="bar">bar</option>
-                <option value="kPa">kPa (Kilopascal)</option>
+                <option value="kPa">kPa (Kilopascals)</option>
+                <option value="hPa">hPa (Hectopascals)</option>
               </select>
-              <span class="field-hint">Automatic mathematical conversion applied.</span>
-            </div>
-            <div class="form-field">
-              <label for="cfgPressWarnPct">Pressure Warning Tolerance (±%):</label>
-              <input type="number" step="1" min="3" max="30" id="cfgPressWarnPct" class="form-input" required>
-              <span class="field-hint">Trigger warning when pressure deviates by ±%</span>
-            </div>
-            <div class="form-field">
-              <label for="cfgPressCritPct">Pressure Critical Tolerance (±%):</label>
-              <input type="number" step="1" min="10" max="50" id="cfgPressCritPct" class="form-input" required>
-              <span class="field-hint">Trigger critical alert when pressure deviates by ±%</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 2: Temperature & Vibration Thresholds -->
-        <div>
-          <h3 class="settings-section-title">Thermal &amp; Dynamic Limits</h3>
-          <div class="form-grid-2">
-            <div class="form-field">
-              <label for="cfgTempWarn">Temp Warning Threshold (°C):</label>
-              <input type="number" step="1" min="30" max="90" id="cfgTempWarn" class="form-input" required>
-              <span class="field-hint">Typical tyre operating threshold (e.g. 50°C)</span>
-            </div>
-            <div class="form-field">
-              <label for="cfgTempCrit">Temp Critical Threshold (°C):</label>
-              <input type="number" step="1" min="50" max="120" id="cfgTempCrit" class="form-input" required>
-              <span class="field-hint">Severe heat buildup risk (e.g. 70°C)</span>
-            </div>
-            <div class="form-field">
-              <label for="cfgVibWarn">Vibration Warning Level (g):</label>
-              <input type="number" step="0.1" min="0.5" max="5.0" id="cfgVibWarn" class="form-input" required>
-              <span class="field-hint">High vibration limit indicator</span>
-            </div>
-            <div class="form-field">
-              <label for="cfgImpactThresh">Road Impact Spike Threshold (g):</label>
-              <input type="number" step="0.1" min="1.0" max="10.0" id="cfgImpactThresh" class="form-input" required>
-              <span class="field-hint">Acceleration spike counted as road pothole/bump</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Section 3: Health Score Weightings -->
-        <div>
-          <h3 class="settings-section-title">Transparent Health Scoring Weights (%)</h3>
-          <div class="form-grid-2">
-            <div class="form-field">
-              <label for="cfgWeightPress">Pressure Weight (%):</label>
-              <input type="number" min="10" max="80" id="cfgWeightPress" class="form-input" required>
-            </div>
-            <div class="form-field">
-              <label for="cfgWeightTemp">Temperature Weight (%):</label>
-              <input type="number" min="10" max="80" id="cfgWeightTemp" class="form-input" required>
-            </div>
-            <div class="form-field">
-              <label for="cfgWeightVib">Vibration Weight (%):</label>
-              <input type="number" min="10" max="80" id="cfgWeightVib" class="form-input" required>
+              <span class="field-hint">Preferred tire pressure measurement unit.</span>
             </div>
             <div class="form-field">
               <label for="cfgChartPoints">Chart Rolling Buffer Points:</label>
               <input type="number" min="15" max="150" id="cfgChartPoints" class="form-input" required>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 2: Mechanical Vibration Limits -->
+        <div>
+          <h3 class="settings-section-title">Vibration Sensor Parameters</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgVibWarnRaw">Vibration Warning Level (ADC Raw):</label>
+              <input type="number" step="50" min="500" max="3500" id="cfgVibWarnRaw" class="form-input" required>
+              <span class="field-hint">Elevated vibration ADC raw threshold (default: 1800)</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgVibCritRaw">Vibration Critical Level (ADC Raw):</label>
+              <input type="number" step="50" min="1500" max="4095" id="cfgVibCritRaw" class="form-input" required>
+              <span class="field-hint">Severe vibration ADC raw limit (default: 3000)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Section 3: Suspension Load & HX711 Calibration -->
+        <div>
+          <h3 class="settings-section-title">Suspension Load &amp; HX711 Calibration (10 kg Cell on DT: 18, SCK: 19)</h3>
+          <div class="form-grid-2">
+            <div class="form-field">
+              <label for="cfgLoadWarnKg">Load Warning Threshold (kg):</label>
+              <input type="number" step="0.1" min="1.0" max="9.0" id="cfgLoadWarnKg" class="form-input" required>
+              <span class="field-hint">High mechanical load warning (default: 7.5 kg)</span>
+            </div>
+            <div class="form-field">
+              <label for="cfgLoadCritKg">Load Critical Limit (kg):</label>
+              <input type="number" step="0.1" min="5.0" max="10.0" id="cfgLoadCritKg" class="form-input" required>
+              <span class="field-hint">Capacity warning (rated max: 10 kg)</span>
+            </div>
+          </div>
+
+          <!-- Calibration Controls in Settings -->
+          <div style="margin-top: 0.75rem; padding: 0.75rem; background: var(--sub-panel-bg); border: 1px solid var(--border-subtle); border-radius: 8px;">
+            <p style="font-size: 0.78rem; font-weight: 600; color: var(--text-main); margin-bottom: 0.4rem;">
+              HX711 Zero &amp; Scale Calibration Workflow:
+            </p>
+            <ol style="font-size: 0.72rem; color: var(--text-secondary); margin-left: 1.25rem; line-height: 1.5; margin-bottom: 0.6rem;">
+              <li>Ensure the load cell has no load attached, then click <strong>Tare Unloaded Cell</strong>.</li>
+              <li>Place a verified test weight on the load cell (e.g. 1.0 kg or 5.0 kg).</li>
+              <li>Enter the weight in the field below and click <strong>Calibrate with Weight</strong>.</li>
+            </ol>
+            <div style="display: flex; gap: 0.6rem; align-items: center; flex-wrap: wrap;">
+              <button type="button" class="btn-secondary" id="modalTareBtn">
+                <i data-lucide="corner-down-right" style="width: 14px; height: 14px;"></i>
+                <span>Tare Unloaded Cell</span>
+              </button>
+              <div style="display: flex; align-items: center; gap: 0.4rem;">
+                <label for="modalCalWeightInput" style="font-size: 0.75rem; color: var(--text-secondary);">Known Weight:</label>
+                <input type="number" id="modalCalWeightInput" class="cal-input-compact" value="1.0" min="0.1" max="10.0" step="0.1">
+                <span style="font-size: 0.75rem; color: var(--text-muted);">kg</span>
+                <button type="button" class="btn-primary" id="modalCalibrateBtn">Calibrate</button>
+              </div>
             </div>
           </div>
         </div>
@@ -708,7 +828,7 @@
             </div>
             <div class="form-field">
               <label for="cfgEmailTemplateId">Template ID:</label>
-              <input type="text" id="cfgEmailTemplateId" class="form-input" placeholder="e.g. template_tyre_alert">
+              <input type="text" id="cfgEmailTemplateId" class="form-input" placeholder="e.g. template_alert">
             </div>
             <div class="form-field">
               <label for="cfgEmailRecipient">Recipient Email:</label>
@@ -724,19 +844,27 @@
           <div style="margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.4rem;">
             <label class="checkbox-row">
               <input type="checkbox" id="cfgEmailCritHealth" checked>
-              <span>Alert when Overall Health enters CRITICAL</span>
+              <span>Alert when Overall Status enters CRITICAL</span>
             </label>
             <label class="checkbox-row">
               <input type="checkbox" id="cfgEmailTemp" checked>
-              <span>Alert on Temperature Limit Breach</span>
+              <span>Alert on Ambient Temperature Limit Breach</span>
             </label>
             <label class="checkbox-row">
-              <input type="checkbox" id="cfgEmailPress" checked>
-              <span>Alert on Severe Pressure Deviation</span>
+              <input type="checkbox" id="cfgEmailHumidity" checked>
+              <span>Alert on Abnormal Ambient Humidity</span>
             </label>
             <label class="checkbox-row">
               <input type="checkbox" id="cfgEmailVib" checked>
-              <span>Alert on Abnormal Harsh Vibration</span>
+              <span>Alert on Harsh Vibration Spike</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailLoad" checked>
+              <span>Alert on Excessive Suspension Load (&gt; 9.5 kg)</span>
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="cfgEmailSensorFault">
+              <span>Alert on Sensor Disconnection or Fault</span>
             </label>
           </div>
 
@@ -764,7 +892,7 @@
   <!-- Application Footer -->
   <footer class="app-footer">
     <p>© 2026 TYRAVEX. All rights reserved.</p>
-    <p>Designed with love by Team TYRAVEX</p>
+    <p>Automotive Hardware Telemetry &amp; Suspension Monitoring</p>
   </footer>
 
   <!-- Application Scripts -->

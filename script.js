@@ -1,7 +1,7 @@
 /**
- * TYRAVEX Application Main Controller
- * Binds UI DOM, Web Serial lifecycle, Chart.js instances, Settings modal,
- * and Telemetry updates.
+ * TYRAVEX Application Main Controller (Revised Hardware Edition)
+ * Binds UI DOM, Web Serial lifecycle, Chart.js instances (5 streams),
+ * Settings modal, Tare/Calibration serial commands, and Telemetry updates.
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -51,7 +51,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const exportCsvBtn = document.getElementById('exportCsvBtn');
 
   // --------------------------------------------------------------------------
-  // Chart.js Telemetry Setup
+  // Chart.js Telemetry Setup (5 Independent Sensor Waveforms)
   // --------------------------------------------------------------------------
   const chartCommonOptions = {
     responsive: true,
@@ -82,14 +82,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // 1. Temperature Chart
+  // 1. Temperature Chart (DHT11)
   const tempCanvas = document.getElementById('tempChartCanvas').getContext('2d');
   const tempChart = new Chart(tempCanvas, {
     type: 'line',
     data: {
       labels: [],
       datasets: [{
-        label: 'Tyre Temp (°C)',
+        label: 'Ambient Temp (°C)',
         data: [],
         borderColor: '#00f0ff',
         backgroundColor: 'rgba(0, 240, 255, 0.08)',
@@ -108,21 +108,54 @@ document.addEventListener('DOMContentLoaded', () => {
         y: {
           ...chartCommonOptions.scales.y,
           title: { display: true, text: '°C', color: '#64748b', font: { size: 10 } },
-          suggestedMin: 20,
-          suggestedMax: 60
+          suggestedMin: 15,
+          suggestedMax: 45
         }
       }
     }
   });
 
-  // 2. Pressure Chart
+  // 2. Humidity Chart (DHT11)
+  const humidityCanvas = document.getElementById('humidityChartCanvas').getContext('2d');
+  const humidityChart = new Chart(humidityCanvas, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Humidity (%RH)',
+        data: [],
+        borderColor: '#06b6d4',
+        backgroundColor: 'rgba(6, 182, 212, 0.08)',
+        fill: true,
+        tension: 0.2,
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: '#06b6d4'
+      }]
+    },
+    options: {
+      ...chartCommonOptions,
+      scales: {
+        ...chartCommonOptions.scales,
+        y: {
+          ...chartCommonOptions.scales.y,
+          title: { display: true, text: '%RH', color: '#64748b', font: { size: 10 } },
+          suggestedMin: 20,
+          suggestedMax: 90
+        }
+      }
+    }
+  });
+
+  // 3. Tire Pressure Chart (BMP280)
   const pressureCanvas = document.getElementById('pressureChartCanvas').getContext('2d');
   const pressureChart = new Chart(pressureCanvas, {
     type: 'line',
     data: {
       labels: [],
       datasets: [{
-        label: 'Tyre Pressure',
+        label: 'Tire Pressure',
         data: [],
         borderColor: '#38bdf8',
         backgroundColor: 'rgba(56, 189, 248, 0.08)',
@@ -140,22 +173,22 @@ document.addEventListener('DOMContentLoaded', () => {
         ...chartCommonOptions.scales,
         y: {
           ...chartCommonOptions.scales.y,
-          title: { display: true, text: 'Pressure', color: '#64748b', font: { size: 10 } },
-          suggestedMin: 20,
-          suggestedMax: 40
+          title: { display: true, text: 'hPa', color: '#64748b', font: { size: 10 } },
+          suggestedMin: 980,
+          suggestedMax: 1040
         }
       }
     }
   });
 
-  // 3. Vibration Chart
+  // 4. Vibration Intensity Chart
   const vibCanvas = document.getElementById('vibrationChartCanvas').getContext('2d');
   const vibChart = new Chart(vibCanvas, {
     type: 'line',
     data: {
       labels: [],
       datasets: [{
-        label: 'Vibration (g)',
+        label: 'Vibration Intensity (%)',
         data: [],
         borderColor: '#f59e0b',
         backgroundColor: 'rgba(245, 158, 11, 0.08)',
@@ -173,9 +206,42 @@ document.addEventListener('DOMContentLoaded', () => {
         ...chartCommonOptions.scales,
         y: {
           ...chartCommonOptions.scales.y,
-          title: { display: true, text: 'Acceleration (g)', color: '#64748b', font: { size: 10 } },
+          title: { display: true, text: '% Intensity', color: '#64748b', font: { size: 10 } },
           suggestedMin: 0,
-          suggestedMax: 3
+          suggestedMax: 100
+        }
+      }
+    }
+  });
+
+  // 5. Suspension Load Chart (HX711)
+  const loadCanvas = document.getElementById('loadChartCanvas').getContext('2d');
+  const loadChart = new Chart(loadCanvas, {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Suspension Load (kg)',
+        data: [],
+        borderColor: '#10b981',
+        backgroundColor: 'rgba(16, 185, 129, 0.08)',
+        fill: true,
+        tension: 0.2,
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        pointBackgroundColor: '#10b981'
+      }]
+    },
+    options: {
+      ...chartCommonOptions,
+      scales: {
+        ...chartCommonOptions.scales,
+        y: {
+          ...chartCommonOptions.scales.y,
+          title: { display: true, text: 'kg', color: '#64748b', font: { size: 10 } },
+          suggestedMin: 0,
+          suggestedMax: 10
         }
       }
     }
@@ -183,8 +249,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Empty state elements
   const tempChartEmpty = document.getElementById('tempChartEmpty');
+  const humidityChartEmpty = document.getElementById('humidityChartEmpty');
   const pressureChartEmpty = document.getElementById('pressureChartEmpty');
   const vibChartEmpty = document.getElementById('vibrationChartEmpty');
+  const loadChartEmpty = document.getElementById('loadChartEmpty');
+
+  const allCharts = [tempChart, humidityChart, pressureChart, vibChart, loadChart];
 
   // --------------------------------------------------------------------------
   // Theme Management (Light / Dark Modes)
@@ -206,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tooltipTitle = isLight ? '#0f172a' : '#f8fafc';
     const tooltipBody = isLight ? '#334155' : '#e2e8f0';
 
-    [tempChart, pressureChart, vibChart].forEach(chart => {
+    allCharts.forEach(chart => {
       if (!chart) return;
       if (chart.options.scales.x) {
         chart.options.scales.x.grid.color = gridColor;
@@ -269,16 +339,6 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Listen to system priority changes
-  if (window.matchMedia) {
-    window.matchMedia('(prefers-color-scheme: light)').addEventListener('change', () => {
-      const savedPref = localStorage.getItem('tyravex_theme') || 'dark';
-      if (savedPref === 'system') {
-        applyTheme('system', false);
-      }
-    });
-  }
-
   // Initial Theme Application
   const initialThemePref = localStorage.getItem('tyravex_theme') || 'dark';
   applyTheme(initialThemePref, false);
@@ -287,7 +347,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Web Serial Event Handlers
   // --------------------------------------------------------------------------
   window.tyravexSerial.on('connect', (info) => {
-    // If demo mode was active, turn it off
     if (demoToggle.checked) {
       demoToggle.checked = false;
       window.tyravexEngine.stopDemoMode();
@@ -354,7 +413,7 @@ document.addEventListener('DOMContentLoaded', () => {
       headerConnBadge.className = 'connection-badge demo';
       headerConnStatusText.textContent = 'DEMO MODE';
       portInfoText.textContent = 'Simulated ESP32 Stream';
-      showToast('info', 'DEMO MODE activated (Synthesized tyre telemetry)');
+      showToast('info', 'DEMO MODE activated (Simulated DHT11, BMP280, Vibration, and HX711)');
     } else {
       window.tyravexEngine.stopDemoMode();
       demoBanner.style.display = 'none';
@@ -366,18 +425,94 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // --------------------------------------------------------------------------
-  // Pressure Unit Toggle Buttons
+  // Unit Toggles: Pressure & Load
   // --------------------------------------------------------------------------
-  const unitButtons = document.querySelectorAll('.unit-btn');
-  unitButtons.forEach(btn => {
+  const pressureUnitButtons = document.querySelectorAll('#pressureUnitToggle .unit-btn');
+  pressureUnitButtons.forEach(btn => {
     btn.addEventListener('click', () => {
-      unitButtons.forEach(b => b.classList.remove('active'));
+      pressureUnitButtons.forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       const newUnit = btn.dataset.unit;
       window.tyravexEngine.saveSettings({ pressureUnit: newUnit });
       document.getElementById('chartPressureUnitLabel').textContent = newUnit;
+      showToast('info', `Tire pressure unit switched to ${newUnit}.`);
     });
   });
+
+  const loadUnitButtons = document.querySelectorAll('#loadUnitToggle .unit-btn');
+  loadUnitButtons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      loadUnitButtons.forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const newUnit = btn.dataset.unit;
+      window.tyravexEngine.saveSettings({ loadDisplayUnit: newUnit });
+      document.getElementById('chartLoadUnitLabel').textContent = newUnit;
+      showToast('info', `Suspension load display unit switched to ${newUnit}.`);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Hardware Load Cell Tare & Calibration Actions
+  // --------------------------------------------------------------------------
+  async function triggerTare() {
+    if (!window.tyravexSerial.isConnected && !window.tyravexEngine.state.isDemoMode) {
+      showToast('warning', 'Please connect the ESP32 via USB Serial first to tare the load cell.');
+      return;
+    }
+
+    if (window.tyravexSerial.isConnected) {
+      showToast('info', 'Sending TARE command to ESP32 (Zeroing unloaded load cell)...');
+      const sent = await window.tyravexSerial.sendCommand('TARE');
+      if (sent) {
+        showToast('success', 'TARE command dispatched to ESP32.');
+        window.tyravexEngine.addEventLog('INFO', 'Sent TARE command to ESP32 firmware.');
+      }
+    } else {
+      showToast('success', 'Demo load cell zeroed (Tare complete).');
+    }
+  }
+
+  async function triggerCalibration(weightInputId) {
+    const weightInput = document.getElementById(weightInputId);
+    if (!weightInput) return;
+
+    const weightVal = parseFloat(weightInput.value);
+    if (isNaN(weightVal) || weightVal <= 0.05 || weightVal > 10.0) {
+      showToast('error', 'Please enter a valid reference test weight between 0.1 kg and 10.0 kg.');
+      return;
+    }
+
+    if (!window.tyravexSerial.isConnected && !window.tyravexEngine.state.isDemoMode) {
+      showToast('warning', 'Please connect the ESP32 via USB Serial first to calibrate the load cell.');
+      return;
+    }
+
+    if (window.tyravexSerial.isConnected) {
+      const cmd = `CAL:${weightVal.toFixed(2)}`;
+      showToast('info', `Sending calibration command: ${cmd} ...`);
+      const sent = await window.tyravexSerial.sendCommand(cmd);
+      if (sent) {
+        showToast('success', `Calibrating scale factor with ${weightVal.toFixed(2)} kg reference weight.`);
+        window.tyravexEngine.addEventLog('INFO', `Sent command ${cmd} to ESP32.`);
+      }
+    } else {
+      showToast('success', `Demo load cell calibrated with ${weightVal.toFixed(2)} kg reference weight.`);
+    }
+  }
+
+  // Bind Card Calibration Buttons
+  const cardTareBtn = document.getElementById('cardTareBtn');
+  if (cardTareBtn) cardTareBtn.addEventListener('click', triggerTare);
+
+  const cardCalibrateBtn = document.getElementById('cardCalibrateBtn');
+  if (cardCalibrateBtn) cardCalibrateBtn.addEventListener('click', () => triggerCalibration('cardCalWeightInput'));
+
+  // Bind Modal Calibration Buttons
+  const modalTareBtn = document.getElementById('modalTareBtn');
+  if (modalTareBtn) modalTareBtn.addEventListener('click', triggerTare);
+
+  const modalCalibrateBtn = document.getElementById('modalCalibrateBtn');
+  if (modalCalibrateBtn) modalCalibrateBtn.addEventListener('click', () => triggerCalibration('modalCalWeightInput'));
 
   // --------------------------------------------------------------------------
   // Chart Pause & Reset Handlers
@@ -415,23 +550,23 @@ document.addEventListener('DOMContentLoaded', () => {
   window.tyravexEngine.subscribe((state, chartData, logs) => {
     const settings = window.tyravexEngine.settings;
 
-    // --- CARD A: Overall Tyre Health ---
+    // --- CARD 1: Overall Monitoring Status ---
     const scoreValEl = document.getElementById('healthScoreDisplay');
     const condEl = document.getElementById('healthConditionDisplay');
     const badgeEl = document.getElementById('healthStatusBadge');
-    const trendEl = document.getElementById('healthTrendDisplay');
+    const connEl = document.getElementById('monitoringConnDisplay');
+    const availEl = document.getElementById('monitoringAvailabilityDisplay');
     const updatedEl = document.getElementById('healthLastUpdatedDisplay');
     const circle = document.getElementById('gaugeProgressCircle');
     const warningsBox = document.getElementById('healthWarningsBox');
 
     if (state.healthScore !== null) {
       scoreValEl.textContent = `${state.healthScore}%`;
-      // SVG progress circle: Circumference = 2 * PI * 70 = 439.82
       const circumference = 439.82;
       const offset = circumference - (circumference * state.healthScore / 100);
       circle.style.strokeDashoffset = offset;
 
-      if (state.healthStatus === 'GOOD') {
+      if (state.healthStatus === 'NORMAL') {
         circle.style.stroke = '#10b981';
       } else if (state.healthStatus === 'WARNING') {
         circle.style.stroke = '#f59e0b';
@@ -447,20 +582,30 @@ document.addEventListener('DOMContentLoaded', () => {
     condEl.textContent = state.healthCondition;
     badgeEl.textContent = state.healthStatus;
     badgeEl.className = `card-status-badge ${state.healthStatus.toLowerCase().replace(' ', '-')}`;
-    trendEl.textContent = state.healthTrend;
+
+    connEl.textContent = state.isConnected
+      ? (state.isDemoMode ? 'SIMULATED DEMO' : 'ONLINE (USB UART)')
+      : 'DISCONNECTED';
+
+    const activeSensors = (state.temperatureValid ? 1 : 0) +
+                          (state.pressureValid ? 1 : 0) +
+                          (state.vibrationAnalogValid && state.vibrationRaw !== null ? 1 : 0) +
+                          (state.loadValid ? 1 : 0);
+    availEl.textContent = `${activeSensors} / 4 Probes Online`;
+
     updatedEl.textContent = state.lastPacketTime
       ? new Date(state.lastPacketTime).toLocaleTimeString()
       : 'Never';
 
     // Warnings list
     if (state.activeWarnings && state.activeWarnings.length > 0) {
-      warningsBox.innerHTML = `<strong>Telemetry Warnings:</strong><br>• ` + state.activeWarnings.join('<br>• ');
+      warningsBox.innerHTML = `<strong>System Notifications:</strong><br>• ` + state.activeWarnings.join('<br>• ');
       warningsBox.classList.add('active');
     } else {
       warningsBox.classList.remove('active');
     }
 
-    // --- CARD B: Tyre Temperature ---
+    // --- CARD 2: Ambient Temperature (DHT11) ---
     const tempDisp = document.getElementById('tempCurrentDisplay');
     const tempBadge = document.getElementById('tempStatusBadge');
     const tempMin = document.getElementById('tempMinDisplay');
@@ -471,7 +616,7 @@ document.addEventListener('DOMContentLoaded', () => {
       tempDisp.textContent = state.temperature.toFixed(1);
       tempMin.textContent = `${state.tempMin.toFixed(1)} °C`;
       tempMax.textContent = `${state.tempMax.toFixed(1)} °C`;
-      tempTrend.textContent = state.healthTrend;
+      tempTrend.textContent = state.tempTrend;
 
       if (state.temperature >= settings.tempCritC) {
         tempBadge.textContent = 'CRITICAL';
@@ -489,108 +634,133 @@ document.addEventListener('DOMContentLoaded', () => {
       tempBadge.className = 'card-status-badge' + (state.isConnected ? ' critical' : '');
     }
 
-    // --- CARD C: Tyre Pressure ---
-    const pressDisp = document.getElementById('pressureCurrentDisplay');
-    const pressUnitEl = document.getElementById('pressureCurrentUnit');
-    const pressTargetEl = document.getElementById('pressureTargetDisplay');
-    const pressDevEl = document.getElementById('pressureDeviationDisplay');
-    const pressStatusEl = document.getElementById('pressureStatusText');
-    const pressSensorEl = document.getElementById('pressureSensorState');
+    // --- CARD 3: Relative Humidity (DHT11) ---
+    const humDisp = document.getElementById('humidityCurrentDisplay');
+    const humBadge = document.getElementById('humidityStatusBadge');
+    const humStatusEl = document.getElementById('humidityStatusDisplay');
+    const humDewEl = document.getElementById('humidityDewPointDisplay');
 
-    const curUnit = settings.pressureUnit;
-    pressUnitEl.textContent = curUnit;
-    
-    // Convert target to user's unit
-    const convertedTarget = TyravexDashboardEngine.convertPressure(settings.targetPressure, 'PSI', curUnit);
-    pressTargetEl.textContent = `${convertedTarget.toFixed(1)} ${curUnit}`;
+    if (state.humidityValid && state.humidity !== null) {
+      humDisp.textContent = state.humidity.toFixed(1);
+      humStatusEl.textContent = state.humidityStatus;
 
-    if (state.pressureValid && state.pressure !== null) {
-      const convertedVal = TyravexDashboardEngine.convertPressure(state.pressure, 'PSI', curUnit);
-      pressDisp.textContent = convertedVal.toFixed(1);
-      
-      const delta = convertedVal - convertedTarget;
-      const sign = delta >= 0 ? '+' : '';
-      pressDevEl.textContent = `${sign}${delta.toFixed(1)} ${curUnit}`;
-
-      const devPct = Math.abs(state.pressure - settings.targetPressure) / settings.targetPressure * 100;
-      if (devPct > settings.pressureToleranceCritPct) {
-        pressStatusEl.textContent = delta < 0 ? 'CRITICAL LOW' : 'CRITICAL HIGH';
-        pressSensorEl.textContent = 'TRANSDUCER OK';
-      } else if (devPct > settings.pressureToleranceWarnPct) {
-        pressStatusEl.textContent = delta < 0 ? 'LOW PRESSURE' : 'HIGH PRESSURE';
-        pressSensorEl.textContent = 'TRANSDUCER OK';
+      if (state.humidity > settings.humidityWarnHigh || state.humidity < settings.humidityWarnLow) {
+        humBadge.textContent = 'WARNING';
+        humBadge.className = 'card-status-badge warning';
+        humDewEl.textContent = state.humidity > settings.humidityWarnHigh ? 'High Moisture Risk' : 'Dry Environment';
       } else {
-        pressStatusEl.textContent = 'OPTIMAL';
-        pressSensorEl.textContent = 'TRANSDUCER OK';
+        humBadge.textContent = 'OPTIMAL';
+        humBadge.className = 'card-status-badge good';
+        humDewEl.textContent = 'Optimal Comfort';
       }
     } else {
-      pressDisp.textContent = '--';
-      pressDevEl.textContent = '--';
-      pressStatusEl.textContent = 'RAW / UNCALIBRATED';
-      pressSensorEl.textContent = 'UNCALIBRATED';
+      humDisp.textContent = '--';
+      humStatusEl.textContent = state.isConnected ? 'SENSOR FAULT' : 'Awaiting Sensor';
+      humBadge.textContent = state.isConnected ? 'SENSOR FAULT' : 'NO DATA';
+      humBadge.className = 'card-status-badge' + (state.isConnected ? ' critical' : '');
+      humDewEl.textContent = '--';
     }
 
-    // --- CARD D: Vibration Monitoring ---
+    // --- CARD 4: Tire Pressure (BMP280) ---
+    const pressDisp = document.getElementById('pressureCurrentDisplay');
+    const pressUnitEl = document.getElementById('pressureCurrentUnit');
+    const pressStatusEl = document.getElementById('pressureStatusText');
+    const pressTrendEl = document.getElementById('pressureTrendDisplay');
+
+    const curPressUnit = settings.pressureUnit || 'PSI';
+    pressUnitEl.textContent = curPressUnit;
+
+    if (state.pressureValid && state.tirePressureDisplay !== null) {
+      pressDisp.textContent = state.tirePressureDisplay;
+      pressStatusEl.textContent = 'BMP280 OK (Tire Probe)';
+      pressTrendEl.textContent = state.pressureTrend;
+    } else {
+      pressDisp.textContent = '--';
+      pressStatusEl.textContent = state.isConnected ? 'BMP280 FAULT' : 'AWAITING BMP280';
+      pressTrendEl.textContent = 'Steady';
+    }
+
+    // --- CARD 5: Vibration Monitoring (AO & DO) ---
     const vibDisp = document.getElementById('vibrationCurrentDisplay');
     const vibUnitEl = document.getElementById('vibrationCurrentUnit');
     const vibBadge = document.getElementById('vibrationStatusBadge');
+    const vibRawEl = document.getElementById('vibrationRawDisplay');
     const vibPeakEl = document.getElementById('vibrationPeakDisplay');
-    const vibAbnormalEl = document.getElementById('vibrationAbnormalDisplay');
-    const vibStateEl = document.getElementById('vibrationStateDisplay');
+    const vibDigitalEl = document.getElementById('vibrationDigitalDisplay');
+    const vibEventsEl = document.getElementById('vibrationEventCountDisplay');
 
-    vibUnitEl.textContent = state.vibrationUnit || 'g';
+    if (state.vibrationAnalogValid && state.vibrationRaw !== null) {
+      vibDisp.textContent = state.vibrationNormalized !== null ? state.vibrationNormalized : '--';
+      vibUnitEl.textContent = '% (Norm)';
+      vibRawEl.textContent = `${state.vibrationRaw} / 4095`;
+      vibPeakEl.textContent = `${state.peakVibrationRaw} ADC`;
 
-    if (state.vibrationValid && state.vibration !== null) {
-      vibDisp.textContent = state.vibration.toFixed(2);
-      vibPeakEl.textContent = `${state.peakVibration.toFixed(2)} ${state.vibrationUnit}`;
-      vibAbnormalEl.textContent = state.abnormalVibrationCount;
-
-      if (state.vibration >= settings.vibrationCritG) {
+      if (state.vibrationRaw >= settings.vibrationCritRaw) {
         vibBadge.textContent = 'CRITICAL';
         vibBadge.className = 'card-status-badge critical';
-        vibStateEl.textContent = 'Severe Vibration Spike';
-      } else if (state.vibration >= settings.vibrationWarnG) {
+      } else if (state.vibrationRaw >= settings.vibrationWarnRaw) {
         vibBadge.textContent = 'ELEVATED';
         vibBadge.className = 'card-status-badge warning';
-        vibStateEl.textContent = 'Moderate Vibration';
       } else {
-        vibBadge.textContent = 'NORMAL';
+        vibBadge.textContent = 'NOMINAL';
         vibBadge.className = 'card-status-badge good';
-        vibStateEl.textContent = 'Nominal Running';
       }
     } else {
       vibDisp.textContent = '--';
+      vibRawEl.textContent = '--';
+      vibPeakEl.textContent = '--';
       vibBadge.textContent = 'NO DATA';
       vibBadge.className = 'card-status-badge';
-      vibStateEl.textContent = 'Awaiting Sensor Telemetry';
     }
 
-    // --- CARD E: Road Impact Analysis ---
-    const impactCountEl = document.getElementById('impactCountDisplay');
-    const impactPeakEl = document.getElementById('impactPeakDisplay');
-    const roadCondBadge = document.getElementById('roadConditionBadge');
-    const roadProfileEl = document.getElementById('roadProfileDisplay');
-    const impactThreshEl = document.getElementById('impactThresholdDisplay');
+    vibDigitalEl.textContent = state.vibrationDigitalStatus;
+    vibEventsEl.textContent = state.vibrationEventCount;
 
-    impactCountEl.textContent = state.impactEvents;
-    impactPeakEl.textContent = state.peakImpact > 0 ? `${state.peakImpact.toFixed(2)} g` : '-- g';
-    impactThreshEl.textContent = `≥ ${settings.impactThresholdG.toFixed(1)} g`;
-    roadCondBadge.textContent = state.roadCondition;
-    roadCondBadge.className = `card-status-badge ${state.roadCondition.toLowerCase()}`;
-    roadProfileEl.textContent = state.roadCondition === 'SMOOTH'
-      ? 'Smooth Asphalt / Highway'
-      : state.roadCondition === 'MODERATE'
-      ? 'Typical Urban / Minor Bumps'
-      : state.roadCondition === 'ROUGH'
-      ? 'Rough Surface / Potholes'
-      : 'Insufficient Data';
+    // --- CARD 6: Tire Load on Suspension (10 kg Load Cell + HX711) ---
+    const loadDisp = document.getElementById('loadCurrentDisplay');
+    const loadUnitEl = document.getElementById('loadCurrentUnit');
+    const loadCalibEl = document.getElementById('loadCalibrationStatus');
+    const loadPeakEl = document.getElementById('loadPeakDisplay');
+    const loadMinEl = document.getElementById('loadMinDisplay');
+    const loadRawEl = document.getElementById('loadRawDisplay');
+    const loadTrendEl = document.getElementById('loadTrendDisplay');
 
-    // --- CARD F: Sensor Health ---
+    const curLoadUnit = settings.loadDisplayUnit || 'kg';
+    loadUnitEl.textContent = curLoadUnit;
+
+    if (loadRawEl) {
+      loadRawEl.textContent = state.loadRaw ? `${state.loadRaw.toLocaleString()} counts` : '-- counts';
+    }
+
+    if (state.loadValid && state.loadKg !== null) {
+      const val = curLoadUnit === 'N' ? state.loadN : state.loadKg;
+      loadDisp.textContent = val !== null ? val.toFixed(2) : '--';
+
+      loadCalibEl.textContent = 'CALIBRATED';
+      loadCalibEl.style.color = 'var(--status-good)';
+
+      const peakVal = curLoadUnit === 'N' && state.peakLoadKg !== null ? (state.peakLoadKg * 9.80665).toFixed(2) : (state.peakLoadKg !== null ? state.peakLoadKg.toFixed(2) : '--');
+      const minVal = curLoadUnit === 'N' && state.minLoadKg !== null ? (state.minLoadKg * 9.80665).toFixed(2) : (state.minLoadKg !== null ? state.minLoadKg.toFixed(2) : '--');
+
+      loadPeakEl.textContent = `${peakVal} ${curLoadUnit}`;
+      loadMinEl.textContent = `${minVal} ${curLoadUnit}`;
+      loadTrendEl.textContent = state.loadTrend;
+    } else {
+      loadDisp.textContent = '--';
+      loadCalibEl.textContent = state.loadCalibrated ? 'AMPLIFIER FAULT' : 'UNCALIBRATED';
+      loadCalibEl.style.color = state.loadCalibrated ? 'var(--status-crit)' : 'var(--status-warn)';
+      loadPeakEl.textContent = `-- ${curLoadUnit}`;
+      loadMinEl.textContent = `-- ${curLoadUnit}`;
+      loadTrendEl.textContent = 'Stable';
+    }
+
+    // --- CARD 7: Sensor Connection Status ---
     const commBadge = document.getElementById('commStatusBadge');
     const pillEsp32 = document.getElementById('sensorEsp32Pill');
-    const pillTemp = document.getElementById('sensorTempPill');
-    const pillPress = document.getElementById('sensorPressurePill');
+    const pillDht11 = document.getElementById('sensorDht11Pill');
+    const pillBmp280 = document.getElementById('sensorBmp280Pill');
     const pillVib = document.getElementById('sensorVibrationPill');
+    const pillHx711 = document.getElementById('sensorHx711Pill');
     const packetsDisp = document.getElementById('packetsCountDisplay');
     const invalidDisp = document.getElementById('invalidPacketsDisplay');
     const errorsDisp = document.getElementById('commErrorsDisplay');
@@ -615,30 +785,33 @@ document.addEventListener('DOMContentLoaded', () => {
       pillEsp32.className = 'sensor-pill none';
     }
 
-    // Temp sensor probe
+    // DHT11
     if (state.temperatureValid) {
-      pillTemp.textContent = 'OPERATIONAL';
-      pillTemp.className = 'sensor-pill ok';
+      pillDht11.textContent = 'OPERATIONAL';
+      pillDht11.className = 'sensor-pill ok';
     } else if (state.isConnected) {
-      pillTemp.textContent = 'FAULT / DISCONNECTED';
-      pillTemp.className = 'sensor-pill error';
+      pillDht11.textContent = 'FAULT / DISCONNECTED';
+      pillDht11.className = 'sensor-pill error';
     } else {
-      pillTemp.textContent = 'NO DATA';
-      pillTemp.className = 'sensor-pill none';
+      pillDht11.textContent = 'NO DATA';
+      pillDht11.className = 'sensor-pill none';
     }
 
-    // Pressure probe
+    // BMP280
     if (state.pressureValid) {
-      pillPress.textContent = 'CALIBRATED';
-      pillPress.className = 'sensor-pill ok';
+      pillBmp280.textContent = 'OPERATIONAL (I2C)';
+      pillBmp280.className = 'sensor-pill ok';
+    } else if (state.isConnected) {
+      pillBmp280.textContent = 'FAULT (I2C 0x76/0x77)';
+      pillBmp280.className = 'sensor-pill error';
     } else {
-      pillPress.textContent = 'UNCALIBRATED';
-      pillPress.className = 'sensor-pill uncalibrated';
+      pillBmp280.textContent = 'NO DATA';
+      pillBmp280.className = 'sensor-pill none';
     }
 
-    // Vibration probe
-    if (state.vibrationValid) {
-      pillVib.textContent = 'OPERATIONAL';
+    // Vibration Module
+    if (state.vibrationAnalogValid && state.vibrationRaw !== null) {
+      pillVib.textContent = 'OPERATIONAL (AO & DO)';
       pillVib.className = 'sensor-pill ok';
     } else if (state.isConnected) {
       pillVib.textContent = 'FAULT';
@@ -648,31 +821,68 @@ document.addEventListener('DOMContentLoaded', () => {
       pillVib.className = 'sensor-pill none';
     }
 
-    // --- CARD G: Live Charts Update ---
+    // HX711 Load Cell
+    if (state.loadValid) {
+      pillHx711.textContent = 'CALIBRATED & READY';
+      pillHx711.className = 'sensor-pill ok';
+    } else if (state.isConnected && state.hx711Valid && !state.loadCalibrated) {
+      pillHx711.textContent = 'UNCALIBRATED';
+      pillHx711.className = 'sensor-pill uncalibrated';
+    } else if (state.isConnected) {
+      pillHx711.textContent = 'AMPLIFIER FAULT';
+      pillHx711.className = 'sensor-pill error';
+    } else {
+      pillHx711.textContent = 'NO DATA';
+      pillHx711.className = 'sensor-pill none';
+    }
+
+    // --- CARD 8: Live Charts Update (5 Waveforms) ---
     if (chartData.labels.length > 0) {
       tempChartEmpty.classList.add('hidden');
+      humidityChartEmpty.classList.add('hidden');
       pressureChartEmpty.classList.add('hidden');
       vibChartEmpty.classList.add('hidden');
+      loadChartEmpty.classList.add('hidden');
 
+      // 1. Temp Chart
       tempChart.data.labels = chartData.labels;
       tempChart.data.datasets[0].data = chartData.temperature;
       tempChart.update('none');
 
+      // 2. Humidity Chart
+      humidityChart.data.labels = chartData.labels;
+      humidityChart.data.datasets[0].data = chartData.humidity;
+      humidityChart.update('none');
+
+      // 3. Pressure Chart
       pressureChart.data.labels = chartData.labels;
-      pressureChart.data.datasets[0].label = `Tyre Pressure (${curUnit})`;
+      pressureChart.data.datasets[0].label = `Tire Pressure (${curPressUnit})`;
       pressureChart.data.datasets[0].data = chartData.pressure;
       pressureChart.update('none');
 
+      // 4. Vibration Chart
       vibChart.data.labels = chartData.labels;
       vibChart.data.datasets[0].data = chartData.vibration;
       vibChart.update('none');
+
+      // 5. Load Chart
+      loadChart.data.labels = chartData.labels;
+      loadChart.data.datasets[0].label = `Tire Load (${curLoadUnit})`;
+      const convertedLoadHistory = chartData.load.map(val => {
+        if (val === null) return null;
+        return curLoadUnit === 'N' ? Number((val * 9.80665).toFixed(2)) : val;
+      });
+      loadChart.data.datasets[0].data = convertedLoadHistory;
+      loadChart.update('none');
     } else {
       tempChartEmpty.classList.remove('hidden');
+      humidityChartEmpty.classList.remove('hidden');
       pressureChartEmpty.classList.remove('hidden');
       vibChartEmpty.classList.remove('hidden');
+      loadChartEmpty.classList.remove('hidden');
     }
 
-    // --- CARD H: Event Log Table Update ---
+    // --- CARD 9: Event Log Table Update ---
     renderLogTable(logs, window.tyravexEngine.activeLogFilter);
   });
 
@@ -686,7 +896,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (filtered.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="7" class="table-empty-row">
+          <td colspan="9" class="table-empty-row">
             No events match the selected '${filter}' filter.
           </td>
         </tr>
@@ -700,15 +910,17 @@ document.addEventListener('DOMContentLoaded', () => {
         <td><span class="log-badge ${item.severity.toLowerCase()}">${item.severity}</span></td>
         <td>${item.status}</td>
         <td>${item.temperature}</td>
+        <td>${item.humidity || '--'}</td>
         <td>${item.pressure}</td>
         <td>${item.vibration}</td>
+        <td>${item.load}</td>
         <td>${escapeHtml(item.description)}</td>
       </tr>
     `).join('');
   }
 
   function escapeHtml(str) {
-    return str
+    return String(str)
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -728,19 +940,17 @@ document.addEventListener('DOMContentLoaded', () => {
       cfgTheme.value = localStorage.getItem('tyravex_theme') || 'dark';
     }
 
-    // Populate fields
-    document.getElementById('cfgTargetPressure').value = s.targetPressure;
-    document.getElementById('cfgPressureUnit').value = s.pressureUnit;
-    document.getElementById('cfgPressWarnPct').value = s.pressureToleranceWarnPct;
-    document.getElementById('cfgPressCritPct').value = s.pressureToleranceCritPct;
+    // Populate environmental & sensor fields
     document.getElementById('cfgTempWarn').value = s.tempWarnC;
     document.getElementById('cfgTempCrit').value = s.tempCritC;
-    document.getElementById('cfgVibWarn').value = s.vibrationWarnG;
-    document.getElementById('cfgImpactThresh').value = s.impactThresholdG;
-    document.getElementById('cfgWeightPress').value = s.weightPressure;
-    document.getElementById('cfgWeightTemp').value = s.weightTemp;
-    document.getElementById('cfgWeightVib').value = s.weightVibration;
+    document.getElementById('cfgHumidityWarnLow').value = s.humidityWarnLow;
+    document.getElementById('cfgHumidityWarnHigh').value = s.humidityWarnHigh;
+    document.getElementById('cfgPressureUnit').value = s.pressureUnit;
     document.getElementById('cfgChartPoints').value = s.chartHistoryLength;
+    document.getElementById('cfgVibWarnRaw').value = s.vibrationWarnRaw;
+    document.getElementById('cfgVibCritRaw').value = s.vibrationCritRaw;
+    document.getElementById('cfgLoadWarnKg').value = s.loadWarnKg;
+    document.getElementById('cfgLoadCritKg').value = s.loadCritKg;
 
     // EmailJS
     document.getElementById('cfgEmailEnabled').checked = es.enabled;
@@ -751,8 +961,10 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('cfgEmailCooldown').value = es.cooldownSeconds || 90;
     document.getElementById('cfgEmailCritHealth').checked = es.alertOnCriticalHealth;
     document.getElementById('cfgEmailTemp').checked = es.alertOnTemperature;
-    document.getElementById('cfgEmailPress').checked = es.alertOnPressure;
+    document.getElementById('cfgEmailHumidity').checked = es.alertOnHumidity;
     document.getElementById('cfgEmailVib').checked = es.alertOnVibration;
+    document.getElementById('cfgEmailLoad').checked = es.alertOnLoad;
+    document.getElementById('cfgEmailSensorFault').checked = es.alertOnSensorFault;
 
     settingsModal.classList.add('open');
     settingsModal.setAttribute('aria-hidden', 'false');
@@ -788,18 +1000,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     const newEngineSettings = {
-      targetPressure: parseFloat(document.getElementById('cfgTargetPressure').value),
-      pressureUnit: document.getElementById('cfgPressureUnit').value,
-      pressureToleranceWarnPct: parseFloat(document.getElementById('cfgPressWarnPct').value),
-      pressureToleranceCritPct: parseFloat(document.getElementById('cfgPressCritPct').value),
       tempWarnC: parseFloat(document.getElementById('cfgTempWarn').value),
       tempCritC: parseFloat(document.getElementById('cfgTempCrit').value),
-      vibrationWarnG: parseFloat(document.getElementById('cfgVibWarn').value),
-      impactThresholdG: parseFloat(document.getElementById('cfgImpactThresh').value),
-      weightPressure: parseInt(document.getElementById('cfgWeightPress').value, 10),
-      weightTemp: parseInt(document.getElementById('cfgWeightTemp').value, 10),
-      weightVibration: parseInt(document.getElementById('cfgWeightVib').value, 10),
-      chartHistoryLength: parseInt(document.getElementById('cfgChartPoints').value, 10)
+      humidityWarnLow: parseFloat(document.getElementById('cfgHumidityWarnLow').value),
+      humidityWarnHigh: parseFloat(document.getElementById('cfgHumidityWarnHigh').value),
+      pressureUnit: document.getElementById('cfgPressureUnit').value,
+      chartHistoryLength: parseInt(document.getElementById('cfgChartPoints').value, 10),
+      vibrationWarnRaw: parseInt(document.getElementById('cfgVibWarnRaw').value, 10),
+      vibrationCritRaw: parseInt(document.getElementById('cfgVibCritRaw').value, 10),
+      loadWarnKg: parseFloat(document.getElementById('cfgLoadWarnKg').value),
+      loadCritKg: parseFloat(document.getElementById('cfgLoadCritKg').value)
     };
 
     const newEmailSettings = {
@@ -811,15 +1021,17 @@ document.addEventListener('DOMContentLoaded', () => {
       cooldownSeconds: parseInt(document.getElementById('cfgEmailCooldown').value, 10) || 90,
       alertOnCriticalHealth: document.getElementById('cfgEmailCritHealth').checked,
       alertOnTemperature: document.getElementById('cfgEmailTemp').checked,
-      alertOnPressure: document.getElementById('cfgEmailPress').checked,
-      alertOnVibration: document.getElementById('cfgEmailVib').checked
+      alertOnHumidity: document.getElementById('cfgEmailHumidity').checked,
+      alertOnVibration: document.getElementById('cfgEmailVib').checked,
+      alertOnLoad: document.getElementById('cfgEmailLoad').checked,
+      alertOnSensorFault: document.getElementById('cfgEmailSensorFault').checked
     };
 
     window.tyravexEngine.saveSettings(newEngineSettings);
     window.tyravexEmail.saveSettings(newEmailSettings);
 
-    // Sync unit toggle button in header
-    unitButtons.forEach(b => {
+    // Sync unit toggle button
+    pressureUnitButtons.forEach(b => {
       b.classList.toggle('active', b.dataset.unit === newEngineSettings.pressureUnit);
     });
 
@@ -829,9 +1041,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Reset to Defaults
   resetDefaultsBtn.addEventListener('click', () => {
-    if (confirm('Reset all parameters to recommended automotive prototype defaults?')) {
-      localStorage.removeItem('tyravex_user_settings');
-      localStorage.removeItem('tyravex_email_settings');
+    if (confirm('Reset all parameters to recommended hardware prototype defaults?')) {
+      localStorage.removeItem('tyravex_user_settings_v2');
+      localStorage.removeItem('tyravex_email_settings_v2');
       window.location.reload();
     }
   });
@@ -840,7 +1052,6 @@ document.addEventListener('DOMContentLoaded', () => {
   sendTestEmailBtn.addEventListener('click', async () => {
     emailStatusText.textContent = 'Sending test email...';
     try {
-      // Temporarily grab current inputs from modal for the test
       window.tyravexEmail.settings.publicKey = document.getElementById('cfgEmailPubKey').value.trim();
       window.tyravexEmail.settings.serviceId = document.getElementById('cfgEmailServiceId').value.trim();
       window.tyravexEmail.settings.templateId = document.getElementById('cfgEmailTemplateId').value.trim();

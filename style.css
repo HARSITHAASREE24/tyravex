@@ -662,6 +662,20 @@ input:checked + .slider:before {
   }
 }
 
+.card-humidity {
+  grid-column: span 12;
+}
+@media (min-width: 640px) {
+  .card-humidity {
+    grid-column: span 6;
+  }
+}
+@media (min-width: 1024px) {
+  .card-humidity {
+    grid-column: span 4;
+  }
+}
+
 .card-pressure {
   grid-column: span 12;
 }
@@ -679,17 +693,27 @@ input:checked + .slider:before {
 .card-vibration {
   grid-column: span 12;
 }
-@media (min-width: 768px) {
+@media (min-width: 640px) {
+  .card-vibration {
+    grid-column: span 6;
+  }
+}
+@media (min-width: 1024px) {
   .card-vibration {
     grid-column: span 4;
   }
 }
 
-.card-road {
+.card-load {
   grid-column: span 12;
 }
-@media (min-width: 768px) {
-  .card-road {
+@media (min-width: 640px) {
+  .card-load {
+    grid-column: span 6;
+  }
+}
+@media (min-width: 1024px) {
+  .card-load {
     grid-column: span 4;
   }
 }
@@ -697,10 +721,52 @@ input:checked + .slider:before {
 .card-sensor-health {
   grid-column: span 12;
 }
-@media (min-width: 768px) {
-  .card-sensor-health {
-    grid-column: span 4;
-  }
+
+/* Calibration Action Buttons & Controls */
+.cal-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+  flex-wrap: wrap;
+}
+.btn-cal-action {
+  background: var(--bg-card);
+  border: 1px solid var(--border-highlight);
+  color: var(--accent-cyan);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 0.35rem 0.65rem;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  transition: var(--transition-fast);
+}
+.btn-cal-action:hover:not(:disabled) {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 10px var(--accent-cyan-glow);
+}
+.btn-cal-action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.cal-input-compact {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 6px;
+  width: 65px;
+}
+.cal-input-compact:focus {
+  border-color: var(--accent-cyan);
+  outline: none;
 }
 
 /* ==========================================================================
@@ -999,6 +1065,9 @@ input:checked + .slider:before {
 @media (min-width: 1024px) {
   .chart-card {
     grid-column: span 4;
+  }
+  .chart-card.span-6 {
+    grid-column: span 6;
   }
 }
 

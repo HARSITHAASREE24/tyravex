@@ -1,26 +1,34 @@
 /**
- * TYRAVEX Email Alert Service
+ * TYRAVEX Email Alert Service (Revised Hardware Edition)
  * Integrates EmailJS browser SDK with rate limiting, cooldown tracking,
- * and customizable notification triggers.
+ * and customizable notification triggers for:
+ * - High ambient temperature (DHT11)
+ * - Configurable humidity warning (DHT11)
+ * - Abnormal vibration intensity (Vibration Module)
+ * - Excessive suspension load (HX711 10 kg load cell)
+ * - Sensor failure / disconnection
+ *
+ * NOTE: Does NOT alert on BMP280 atmospheric pressure as tyre pressure.
+ * No hardcoded private credentials.
  */
 
 class TyravexEmailAlertService {
   constructor() {
-    this.storageKey = 'tyravex_email_settings';
+    this.storageKey = 'tyravex_email_settings_v2';
     this.settings = this.loadSettings();
 
     // Timestamp tracking for rate limiting (cooldown in ms)
     this.lastSentTimes = {
-      pressure: 0,
       temperature: 0,
+      humidity: 0,
       vibration: 0,
+      load: 0,
       critical_health: 0,
       sensor_fault: 0,
       test: 0
     };
 
-    // Global cooldown between any emails (default 60 seconds)
-    this.defaultCooldownMs = 90 * 1000; // 90 seconds per alert category
+    this.defaultCooldownMs = 90 * 1000; // 90 seconds default cooldown per category
     this.isSending = false;
     this.lastDeliveryStatus = {
       status: 'IDLE', // 'IDLE', 'SENDING', 'SUCCESS', 'FAILED', 'UNCONFIGURED'
@@ -30,7 +38,7 @@ class TyravexEmailAlertService {
 
     this.onStatusChange = null;
 
-    // Initialize EmailJS if credentials are saved
+    // Initialize EmailJS if credentials exist in localStorage
     this.initEmailJS();
   }
 
@@ -44,9 +52,10 @@ class TyravexEmailAlertService {
       serviceId: '',
       templateId: '',
       recipientEmail: '',
-      alertOnPressure: true,
       alertOnTemperature: true,
+      alertOnHumidity: true,
       alertOnVibration: true,
+      alertOnLoad: true,
       alertOnCriticalHealth: true,
       alertOnSensorFault: false,
       cooldownSeconds: 90
@@ -139,27 +148,27 @@ class TyravexEmailAlertService {
 
   /**
    * Dispatches an alert email through EmailJS if conditions are met
-   * @param {string} category 'pressure' | 'temperature' | 'vibration' | 'critical_health' | 'sensor_fault'
+   * @param {string} category 'temperature' | 'humidity' | 'vibration' | 'load' | 'critical_health' | 'sensor_fault'
    * @param {string} alertTitle Brief title
    * @param {string} alertDetails Descriptive telemetry data
    * @param {object} telemetrySnapshot Current sensor readings
    */
   async triggerAlert(category, alertTitle, alertDetails, telemetrySnapshot = {}) {
-    // Check if overall email alerts are enabled and configured
     if (!this.settings.enabled) return false;
     if (!this.isConfigured()) {
       this._updateStatus('UNCONFIGURED', 'Alert skipped: EmailJS credentials incomplete in Settings.');
       return false;
     }
 
-    // Check category toggle
-    if (category === 'pressure' && !this.settings.alertOnPressure) return false;
+    // Check category toggles
     if (category === 'temperature' && !this.settings.alertOnTemperature) return false;
+    if (category === 'humidity' && !this.settings.alertOnHumidity) return false;
     if (category === 'vibration' && !this.settings.alertOnVibration) return false;
+    if (category === 'load' && !this.settings.alertOnLoad) return false;
     if (category === 'critical_health' && !this.settings.alertOnCriticalHealth) return false;
     if (category === 'sensor_fault' && !this.settings.alertOnSensorFault) return false;
 
-    // Check cooldown to avoid spam floods
+    // Check rate limit cooldown to avoid spam floods
     if (!this._isCooledDown(category)) {
       const remainingSec = Math.ceil(
         ((this.lastSentTimes[category] + (this.settings.cooldownSeconds * 1000)) - Date.now()) / 1000
@@ -186,10 +195,12 @@ class TyravexEmailAlertService {
       alert_title: `[TYRAVEX ALERT] ${alertTitle}`,
       alert_category: category.toUpperCase(),
       alert_details: alertDetails,
-      temperature_reading: telemetrySnapshot.temperature !== null ? `${telemetrySnapshot.temperature} °C` : 'N/A',
-      pressure_reading: telemetrySnapshot.pressure !== null ? `${telemetrySnapshot.pressure} ${telemetrySnapshot.pressureUnit || 'PSI'}` : 'N/A',
-      vibration_reading: telemetrySnapshot.vibration !== null ? `${telemetrySnapshot.vibration} ${telemetrySnapshot.vibrationUnit || 'g'}` : 'N/A',
-      health_score: telemetrySnapshot.healthScore !== null ? `${telemetrySnapshot.healthScore}% (${telemetrySnapshot.healthStatus || 'N/A'})` : 'N/A',
+      temperature_reading: telemetrySnapshot.temperature !== null ? `${telemetrySnapshot.temperature} °C (Ambient)` : 'N/A',
+      humidity_reading: telemetrySnapshot.humidity !== null ? `${telemetrySnapshot.humidity} %RH` : 'N/A',
+      pressure_reading: telemetrySnapshot.pressure !== null ? `${telemetrySnapshot.pressure} hPa (Atmospheric)` : 'N/A',
+      vibration_reading: telemetrySnapshot.vibrationRaw !== null ? `ADC Raw ${telemetrySnapshot.vibrationRaw}` : 'N/A',
+      load_reading: telemetrySnapshot.loadKg !== null ? `${telemetrySnapshot.loadKg} kg (Suspension)` : 'N/A',
+      monitoring_status: telemetrySnapshot.healthStatus || 'N/A',
       timestamp: new Date().toLocaleString(),
       device_name: telemetrySnapshot.device || 'TYRAVEX Hardware Prototype'
     };
@@ -228,15 +239,14 @@ class TyravexEmailAlertService {
     return this.triggerAlert(
       'test',
       'Test Alert Verification',
-      'This is an automated test message from your TYRAVEX Tire Monitoring Dashboard to verify that your EmailJS integration is operating correctly.',
+      'This is an automated test message from your TYRAVEX Monitoring Dashboard to verify that your EmailJS integration is operating correctly with the updated hardware sensors.',
       {
-        temperature: 32.5,
-        pressure: 32.0,
-        pressureUnit: 'PSI',
-        vibration: 0.15,
-        vibrationUnit: 'g',
-        healthScore: 98,
-        healthStatus: 'GOOD',
+        temperature: 30.5,
+        humidity: 55.0,
+        pressure: 1013.2,
+        vibrationRaw: 850,
+        loadKg: 3.50,
+        healthStatus: 'NORMAL',
         device: 'TYRAVEX Test Runner'
       }
     );

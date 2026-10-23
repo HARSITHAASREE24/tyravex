@@ -1,12 +1,15 @@
 /**
- * TYRAVEX Telemetry & Tyre Health Engine
- * Handles sensor validation, unit conversion, health estimation algorithms,
- * road impact profiling, event logging, CSV export, and chart datasets.
+ * TYRAVEX Telemetry & Monitoring Engine
+ * Telemetry processor for:
+ * 1. DHT11: Ambient Temperature (°C) & Humidity (%RH)
+ * 2. BMP280: Tire Pressure (PSI / bar / kPa / hPa)
+ * 3. Vibration Sensor: Analog Raw (0-4095) & Digital Events
+ * 4. HX711 Load Cell: Suspension / Tire Applied Load (kg / N / Raw)
  */
 
 class TyravexDashboardEngine {
   constructor() {
-    this.storageKey = 'tyravex_user_settings';
+    this.storageKey = 'tyravex_user_settings_v3';
     this.settings = this.loadSettings();
 
     // Live Telemetry State
@@ -19,49 +22,72 @@ class TyravexDashboardEngine {
       invalidPacketCount: 0,
       commErrors: 0,
 
-      // Sensor readings
-      temperature: null,
+      // 1. DHT11: Ambient Temperature & Humidity
+      temperature: null,          // °C
       temperatureValid: false,
-      pressure: null, // in base unit (PSI)
-      pressureValid: false,
-      pressureUnit: 'PSI',
-      vibration: null,
-      vibrationValid: false,
-      vibrationUnit: 'g',
-
-      // Statistics
       tempMin: null,
       tempMax: null,
       recentTemps: [],
-      peakVibration: 0,
+      tempTrend: 'STABLE',
+      humidity: null,             // %RH
+      humidityValid: false,
+      humidityStatus: 'NO DATA',
+      dht11Valid: false,
+
+      // 2. Tire Pressure
+      tirePressureHpa: null,      // Base reading in hPa
+      tirePressureDisplay: null,  // In user's chosen unit (PSI / bar / kPa / hPa)
+      pressureValid: false,
+      recentPressures: [],
+      pressureTrend: 'STEADY',
+      bmp280Valid: false,
+
+      // 3. Vibration Sensor (AO & DO)
+      vibrationRaw: null,         // 0 - 4095 ADC
+      vibrationNormalized: null,  // 0 - 100%
+      vibrationDigital: 0,        // 0 (quiet) or 1 (trigger)
+      vibrationDigitalStatus: 'QUIET',
+      vibrationEventCount: 0,
+      peakVibrationRaw: 0,
       recentVibrations: [],
-      impactEvents: 0,
-      peakImpact: 0,
-      abnormalVibrationCount: 0,
+      vibrationStatus: 'AWAITING',
+      vibrationAnalogValid: false,
+      vibrationDigitalValid: false,
 
-      // Computed health
+      // 4. HX711 & 10 kg Load Cell (Suspension Load on Tire)
+      loadKg: null,
+      loadN: null,
+      loadRaw: 0,
+      loadCalibrated: false,
+      loadValid: false,
+      hx711Valid: false,
+      peakLoadKg: null,
+      minLoadKg: null,
+      recentLoads: [],
+      loadTrend: 'STABLE',
+      loadStatus: 'READY',
+
+      // 5. Overall Monitoring Status
       healthScore: null,
-      healthStatus: 'INSUFFICIENT DATA', // GOOD, WARNING, CRITICAL, INSUFFICIENT DATA
-      healthCondition: 'Awaiting Sensor Telemetry',
-      healthTrend: 'STABLE',
-      activeWarnings: [],
-
-      // Road impact estimate
-      roadCondition: 'INSUFFICIENT DATA' // SMOOTH, MODERATE, ROUGH, INSUFFICIENT DATA
+      healthStatus: 'INSUFFICIENT DATA', // NORMAL, WARNING, CRITICAL, INSUFFICIENT DATA
+      healthCondition: 'Awaiting Hardware Telemetry',
+      activeWarnings: []
     };
 
-    // Live Chart Datasets (bounded history)
+    // Live Chart Datasets (5 streams)
     this.isChartPaused = false;
     this.chartData = {
       labels: [],
       temperature: [],
+      humidity: [],
       pressure: [],
-      vibration: []
+      vibration: [],
+      load: []
     };
 
     // Live Event Log (max 200 items in memory)
     this.eventLogs = [];
-    this.activeLogFilter = 'ALL'; // ALL, WARNING, CRITICAL, SENSOR_ERROR
+    this.activeLogFilter = 'ALL';
 
     // Listener callbacks
     this.subscribers = new Set();
@@ -75,20 +101,30 @@ class TyravexDashboardEngine {
    */
   loadSettings() {
     const defaults = {
-      targetPressure: 32.0, // in PSI
-      pressureUnit: 'PSI', // PSI, bar, kPa
-      pressureToleranceWarnPct: 10, // ±10% from target
-      pressureToleranceCritPct: 20, // ±20% from target
-      tempWarnC: 50.0, // °C
-      tempCritC: 70.0, // °C
-      vibrationWarnG: 1.5, // g
-      vibrationCritG: 2.5, // g
-      impactThresholdG: 2.0, // g spike for impact event
-      weightPressure: 45, // %
-      weightTemp: 30, // %
-      weightVibration: 25, // %
-      chartHistoryLength: 40, // data points
-      staleTimeoutSeconds: 4, // seconds before marking data stale
+      // DHT11 Ambient thermal limits
+      tempWarnC: 45.0,
+      tempCritC: 60.0,
+      humidityWarnLow: 25.0,
+      humidityWarnHigh: 80.0,
+
+      // Tire Pressure preferred display unit
+      pressureUnit: 'PSI', // 'PSI', 'bar', 'kPa', 'hPa'
+      targetTirePressurePsi: 32.0,
+
+      // Vibration Sensor Limits (12-bit ADC raw 0-4095)
+      vibrationWarnRaw: 1800,
+      vibrationCritRaw: 3000,
+
+      // Suspension Load on Tire (10 kg max rated load cell)
+      loadWarnKg: 7.5,
+      loadCritKg: 9.5,
+      loadDisplayUnit: 'kg', // 'kg' or 'N'
+      loadTareOffset: 24500,
+      loadScaleFactor: 21500,
+
+      // Buffer & Alert parameters
+      chartHistoryLength: 40,
+      staleTimeoutSeconds: 4,
       baudRate: 115200
     };
 
@@ -113,7 +149,7 @@ class TyravexDashboardEngine {
     } catch (e) {
       console.error('[TYRAVEX Engine] Could not save settings:', e);
     }
-    this.recomputeHealth();
+    this.recomputeMonitoringStatus();
     this.notify();
   }
 
@@ -136,45 +172,25 @@ class TyravexDashboardEngine {
   }
 
   /**
-   * Mathematically exact pressure unit conversions
+   * Pressure unit conversion helper from hPa to target unit
    */
-  static convertPressure(value, fromUnit, toUnit) {
-    if (value === null || isNaN(value)) return null;
-    if (fromUnit === toUnit) return value;
-
-    // Convert input to PSI as reference
-    let psiVal = value;
-    if (fromUnit === 'bar') {
-      psiVal = value * 14.50377377;
-    } else if (fromUnit === 'kPa') {
-      psiVal = value * 0.1450377377;
-    }
-
-    // Convert from PSI to target unit
-    if (toUnit === 'bar') {
-      return psiVal * 0.06894757;
-    } else if (toUnit === 'kPa') {
-      return psiVal * 6.894757;
-    } else {
-      return psiVal; // PSI
+  static convertPressureFromHpa(hpaVal, toUnit) {
+    if (hpaVal === null || isNaN(hpaVal)) return null;
+    switch (toUnit) {
+      case 'PSI':
+        return Number((hpaVal * 0.01450377).toFixed(1));
+      case 'bar':
+        return Number((hpaVal * 0.001).toFixed(2));
+      case 'kPa':
+        return Number((hpaVal * 0.1).toFixed(1));
+      case 'hPa':
+      default:
+        return Number(hpaVal.toFixed(1));
     }
   }
 
   /**
    * Ingest raw parsed packet from ESP32 or Demo generator
-   * Matches specified JSON format:
-   * {
-   *   device: "TYRAVEX",
-   *   temperature: 34.5,
-   *   pressure: null,
-   *   pressure_unit: "PSI",
-   *   pressure_valid: false,
-   *   vibration: 1.25,
-   *   vibration_unit: "g",
-   *   vibration_valid: true,
-   *   temperature_valid: true,
-   *   timestamp_ms: 12500
-   * }
    */
   processPacket(packet) {
     if (!packet || typeof packet !== 'object') {
@@ -185,11 +201,11 @@ class TyravexDashboardEngine {
     this.state.packetCount++;
     this.state.lastPacketTime = Date.now();
 
-    // 1. Process Temperature (DS18B20)
-    if (packet.temperature_valid === true && packet.temperature !== null && !isNaN(packet.temperature)) {
-      const tempVal = Number(packet.temperature);
-      // Realistic automotive tyre temp sanity range (-30°C to 130°C)
-      if (tempVal >= -30 && tempVal <= 130) {
+    // 1. Process DHT11 Temperature & Humidity
+    this.state.dht11Valid = Boolean(packet.dht11_valid);
+    if (this.state.dht11Valid && packet.temperature_c !== null && !isNaN(packet.temperature_c)) {
+      const tempVal = Number(packet.temperature_c);
+      if (tempVal >= -20 && tempVal <= 70) {
         this.state.temperature = tempVal;
         this.state.temperatureValid = true;
 
@@ -198,248 +214,278 @@ class TyravexDashboardEngine {
 
         this.state.recentTemps.push(tempVal);
         if (this.state.recentTemps.length > 10) this.state.recentTemps.shift();
+
+        if (this.state.recentTemps.length >= 3) {
+          const delta = this.state.recentTemps[this.state.recentTemps.length - 1] - this.state.recentTemps[0];
+          if (delta > 0.5) this.state.tempTrend = 'RISING';
+          else if (delta < -0.5) this.state.tempTrend = 'FALLING';
+          else this.state.tempTrend = 'STABLE';
+        }
       } else {
-        this.state.temperatureValid = false;
         this.state.temperature = null;
-        this.state.invalidPacketCount++;
+        this.state.temperatureValid = false;
       }
     } else {
-      this.state.temperatureValid = false;
       this.state.temperature = null;
+      this.state.temperatureValid = false;
     }
 
-    // 2. Process Pressure
-    if (packet.pressure_valid === true && packet.pressure !== null && !isNaN(packet.pressure)) {
-      const rawUnit = packet.pressure_unit || 'PSI';
-      const rawVal = Number(packet.pressure);
-      // Normalize incoming pressure to PSI
-      const pressurePsi = TyravexDashboardEngine.convertPressure(rawVal, rawUnit, 'PSI');
-      
-      if (pressurePsi >= 0 && pressurePsi <= 120) {
-        this.state.pressure = pressurePsi;
+    if (this.state.dht11Valid && packet.humidity_percent !== null && !isNaN(packet.humidity_percent)) {
+      const humVal = Number(packet.humidity_percent);
+      if (humVal >= 0 && humVal <= 100) {
+        this.state.humidity = humVal;
+        this.state.humidityValid = true;
+        if (humVal > this.settings.humidityWarnHigh) {
+          this.state.humidityStatus = 'HIGH HUMIDITY';
+        } else if (humVal < this.settings.humidityWarnLow) {
+          this.state.humidityStatus = 'DRY AIR';
+        } else {
+          this.state.humidityStatus = 'OPTIMAL';
+        }
+      } else {
+        this.state.humidity = null;
+        this.state.humidityValid = false;
+        this.state.humidityStatus = 'INVALID';
+      }
+    } else {
+      this.state.humidity = null;
+      this.state.humidityValid = false;
+      this.state.humidityStatus = this.state.isConnected ? 'SENSOR FAULT' : 'NO DATA';
+    }
+
+    // 2. Process Tire Pressure (BMP280)
+    this.state.bmp280Valid = Boolean(packet.bmp280_valid);
+    const rawHpa = packet.tire_pressure_hpa !== undefined
+      ? packet.tire_pressure_hpa
+      : packet.atmospheric_pressure_hpa;
+
+    if (this.state.bmp280Valid && rawHpa !== null && !isNaN(rawHpa)) {
+      const pressVal = Number(rawHpa);
+      if (pressVal >= 300 && pressVal <= 1400) {
+        this.state.tirePressureHpa = pressVal;
+        this.state.tirePressureDisplay = TyravexDashboardEngine.convertPressureFromHpa(pressVal, this.settings.pressureUnit);
         this.state.pressureValid = true;
+
+        this.state.recentPressures.push(pressVal);
+        if (this.state.recentPressures.length > 10) this.state.recentPressures.shift();
+
+        if (this.state.recentPressures.length >= 3) {
+          const delta = this.state.recentPressures[this.state.recentPressures.length - 1] - this.state.recentPressures[0];
+          if (delta > 0.8) this.state.pressureTrend = 'RISING';
+          else if (delta < -0.8) this.state.pressureTrend = 'FALLING';
+          else this.state.pressureTrend = 'STEADY';
+        }
       } else {
+        this.state.tirePressureHpa = null;
+        this.state.tirePressureDisplay = null;
         this.state.pressureValid = false;
-        this.state.pressure = null;
-        this.state.invalidPacketCount++;
       }
     } else {
+      this.state.tirePressureHpa = null;
+      this.state.tirePressureDisplay = null;
       this.state.pressureValid = false;
-      this.state.pressure = null;
     }
 
-    // 3. Process Vibration
-    if (packet.vibration_valid === true && packet.vibration !== null && !isNaN(packet.vibration)) {
-      const vibVal = Number(packet.vibration);
-      if (vibVal >= 0 && vibVal <= 25) {
-        this.state.vibration = vibVal;
-        this.state.vibrationValid = true;
-        this.state.vibrationUnit = packet.vibration_unit || 'g';
+    // 3. Process Vibration Sensor (AO & DO)
+    this.state.vibrationAnalogValid = Boolean(packet.vibration_analog_valid);
+    this.state.vibrationDigitalValid = Boolean(packet.vibration_digital_valid);
 
-        if (vibVal > this.state.peakVibration) {
-          this.state.peakVibration = vibVal;
-        }
+    if (this.state.vibrationAnalogValid && packet.vibration_analog_raw !== null && !isNaN(packet.vibration_analog_raw)) {
+      const raw = Math.max(0, Math.min(4095, Number(packet.vibration_analog_raw)));
+      this.state.vibrationRaw = raw;
+      this.state.vibrationNormalized = Math.round((raw / 4095) * 100);
 
-        this.state.recentVibrations.push(vibVal);
-        if (this.state.recentVibrations.length > 20) this.state.recentVibrations.shift();
+      if (raw > this.state.peakVibrationRaw) {
+        this.state.peakVibrationRaw = raw;
+      }
 
-        // Check for impact events (spikes > impact threshold)
-        if (vibVal >= this.settings.impactThresholdG) {
-          this.state.impactEvents++;
-          if (vibVal > this.state.peakImpact) {
-            this.state.peakImpact = vibVal;
-          }
-          this.addEventLog('WARNING', `Road impact detected (${vibVal.toFixed(2)} ${this.state.vibrationUnit})`);
-        }
+      this.state.recentVibrations.push(raw);
+      if (this.state.recentVibrations.length > 20) this.state.recentVibrations.shift();
 
-        // Track continuous harsh vibration
-        if (vibVal >= this.settings.vibrationWarnG) {
-          this.state.abnormalVibrationCount++;
-        }
+      if (raw >= this.settings.vibrationCritRaw) {
+        this.state.vibrationStatus = 'CRITICAL VIBRATION';
+      } else if (raw >= this.settings.vibrationWarnRaw) {
+        this.state.vibrationStatus = 'ELEVATED';
       } else {
-        this.state.vibrationValid = false;
-        this.state.vibration = null;
+        this.state.vibrationStatus = 'NOMINAL';
       }
     } else {
-      this.state.vibrationValid = false;
-      this.state.vibration = null;
+      this.state.vibrationRaw = null;
+      this.state.vibrationNormalized = null;
+      this.state.vibrationStatus = 'NO DATA';
     }
 
-    // 4. Update Health and Road Condition Estimates
-    this.recomputeHealth();
-    this.recomputeRoadCondition();
+    this.state.vibrationDigital = packet.vibration_digital ? 1 : 0;
+    this.state.vibrationDigitalStatus = this.state.vibrationDigital === 1 ? 'ACTIVE (PULSE)' : 'QUIET';
+    this.state.vibrationEventCount = Number(packet.vibration_event_count) || 0;
 
-    // 5. Append to Rolling Chart Datasets
+    // 4. Process HX711 Suspension / Tire Applied Load
+    this.state.hx711Valid = Boolean(packet.hx711_valid);
+    this.state.loadCalibrated = Boolean(packet.load_calibrated);
+    this.state.loadRaw = packet.load_raw ? Number(packet.load_raw) : 0;
+
+    // Determine loadKg: either directly from packet.load_kg or calculate from load_raw
+    let calculatedKg = null;
+    if (packet.load_kg !== null && !isNaN(packet.load_kg)) {
+      calculatedKg = Number(packet.load_kg);
+    } else if (this.state.loadRaw > 0) {
+      // Calculate from raw counts using tare offset and scale factor
+      // Default offset ~24500, scale ~21500 per kg
+      const tare = this.settings.loadTareOffset || 24500;
+      const scale = this.settings.loadScaleFactor || 21500;
+      calculatedKg = (this.state.loadRaw - tare) / scale;
+    }
+
+    if (this.state.hx711Valid && calculatedKg !== null && !isNaN(calculatedKg)) {
+      const loadKgVal = Math.max(0, calculatedKg);
+      this.state.loadKg = Number(loadKgVal.toFixed(2));
+      this.state.loadN = Number((loadKgVal * 9.80665).toFixed(2));
+      this.state.loadValid = true;
+
+      if (this.state.peakLoadKg === null || loadKgVal > this.state.peakLoadKg) {
+        this.state.peakLoadKg = Number(loadKgVal.toFixed(2));
+      }
+      if (this.state.minLoadKg === null || loadKgVal < this.state.minLoadKg) {
+        this.state.minLoadKg = Number(loadKgVal.toFixed(2));
+      }
+
+      this.state.recentLoads.push(loadKgVal);
+      if (this.state.recentLoads.length > 10) this.state.recentLoads.shift();
+
+      if (this.state.recentLoads.length >= 3) {
+        const delta = this.state.recentLoads[this.state.recentLoads.length - 1] - this.state.recentLoads[0];
+        if (delta > 0.25) this.state.loadTrend = 'INCREASING';
+        else if (delta < -0.25) this.state.loadTrend = 'DECREASING';
+        else this.state.loadTrend = 'STABLE';
+      }
+
+      if (loadKgVal >= this.settings.loadCritKg) {
+        this.state.loadStatus = 'OVERLOAD (> 9.5 kg)';
+      } else if (loadKgVal >= this.settings.loadWarnKg) {
+        this.state.loadStatus = 'HIGH LOAD';
+      } else {
+        this.state.loadStatus = 'NOMINAL';
+      }
+    } else {
+      this.state.loadKg = null;
+      this.state.loadN = null;
+      this.state.loadValid = false;
+      this.state.loadStatus = this.state.isConnected ? 'AMPLIFIER FAULT' : 'NO DATA';
+    }
+
+    // 5. Recompute Monitoring Status
+    this.recomputeMonitoringStatus();
+
+    // 6. Append to Live Chart History
     if (!this.isChartPaused) {
       this.appendChartData();
     }
 
-    // 6. Check for automatic alert threshold triggers (EmailJS)
+    // 7. Evaluate Automated Alerts
     this.evaluateAlerts();
 
-    // 7. Dispatch updates to subscribers
+    // 8. Notify UI subscribers
     this.notify();
   }
 
   /**
-   * Recompute Transparent Experimental Tyre Health Score (0-100%)
-   * STRICT SAFETY CRITERION:
-   * "Do not classify the tyre as healthy if essential readings are missing, stale, invalid or uncalibrated."
+   * Recompute Overall Monitoring Status
    */
-  recomputeHealth() {
+  recomputeMonitoringStatus() {
     const warnings = [];
     const validCount = (this.state.temperatureValid ? 1 : 0) +
                        (this.state.pressureValid ? 1 : 0) +
-                       (this.state.vibrationValid ? 1 : 0);
+                       (this.state.vibrationAnalogValid && this.state.vibrationRaw !== null ? 1 : 0) +
+                       (this.state.loadValid ? 1 : 0);
 
-    // If zero or insufficient sensors are valid, report INSUFFICIENT DATA
-    if (validCount === 0 || !this.state.lastPacketTime) {
+    if (!this.state.lastPacketTime || validCount === 0) {
       this.state.healthScore = null;
       this.state.healthStatus = 'INSUFFICIENT DATA';
-      this.state.healthCondition = 'No valid sensor telemetry received';
-      this.state.activeWarnings = ['Connect ESP32 or activate sensor hardware.'];
+      this.state.healthCondition = 'Awaiting Telemetry Stream';
+      this.state.activeWarnings = ['Connect ESP32 or activate Demo Mode.'];
       return;
     }
 
-    // If pressure sensor is uncalibrated or disconnected
-    if (!this.state.pressureValid) {
-      warnings.push('Tyre pressure sensor uncalibrated or disconnected.');
-    }
-
-    // If temperature sensor is disconnected
     if (!this.state.temperatureValid) {
-      warnings.push('Temperature sensor disconnected or invalid.');
+      warnings.push('DHT11 Temperature sensor offline.');
+    }
+    if (!this.state.pressureValid) {
+      warnings.push('Tire Pressure sensor (BMP280) offline.');
+    }
+    if (this.state.vibrationRaw === null) {
+      warnings.push('Vibration sensor module reading unavailable.');
+    }
+    if (!this.state.loadValid) {
+      warnings.push('Suspension Load Cell (HX711) reading unavailable.');
     }
 
-    // If vibration sensor is disconnected
-    if (!this.state.vibrationValid) {
-      warnings.push('Vibration telemetry uncalibrated or unavailable.');
-    }
-
-    // If critical sensors are missing, score cannot be considered healthy
-    if (!this.state.pressureValid && !this.state.temperatureValid) {
-      this.state.healthScore = null;
-      this.state.healthStatus = 'INSUFFICIENT DATA';
-      this.state.healthCondition = 'Essential primary sensors offline';
-      this.state.activeWarnings = warnings;
-      return;
-    }
-
-    // Component Scoring (100 is ideal, deducted for deviations)
-    let pressureSubScore = 100;
-    if (this.state.pressureValid && this.state.pressure !== null) {
-      const target = this.settings.targetPressure;
-      const deviation = Math.abs(this.state.pressure - target);
-      const devPct = (deviation / target) * 100;
-
-      if (devPct > this.settings.pressureToleranceCritPct) {
-        pressureSubScore = Math.max(0, 100 - (devPct * 2.5));
-        warnings.push(`Severe pressure deviation (${devPct.toFixed(1)}% off target ${target} PSI).`);
-      } else if (devPct > this.settings.pressureToleranceWarnPct) {
-        pressureSubScore = Math.max(40, 100 - (devPct * 2.0));
-        warnings.push(`Moderate pressure deviation (${devPct.toFixed(1)}% off target).`);
-      } else {
-        pressureSubScore = 100 - (devPct * 0.5);
-      }
-    } else {
-      // Pressure sensor missing: penalize heavily
-      pressureSubScore = 30;
-    }
-
-    let tempSubScore = 100;
+    let tempScore = 100;
     if (this.state.temperatureValid && this.state.temperature !== null) {
-      const temp = this.state.temperature;
-      if (temp >= this.settings.tempCritC) {
-        tempSubScore = Math.max(0, 40 - (temp - this.settings.tempCritC) * 3);
-        warnings.push(`Critical tyre temperature (${temp.toFixed(1)}°C >= ${this.settings.tempCritC}°C).`);
-      } else if (temp >= this.settings.tempWarnC) {
-        tempSubScore = Math.max(50, 85 - (temp - this.settings.tempWarnC) * 2);
-        warnings.push(`Elevated tyre temperature (${temp.toFixed(1)}°C >= ${this.settings.tempWarnC}°C).`);
-      } else {
-        tempSubScore = 100;
+      const t = this.state.temperature;
+      if (t >= this.settings.tempCritC) {
+        tempScore = 30;
+        warnings.push(`High ambient temperature: ${t.toFixed(1)}°C.`);
+      } else if (t >= this.settings.tempWarnC) {
+        tempScore = 65;
+        warnings.push(`Elevated ambient temperature: ${t.toFixed(1)}°C.`);
       }
     } else {
-      tempSubScore = 40;
+      tempScore = 50;
     }
 
-    let vibSubScore = 100;
-    if (this.state.vibrationValid && this.state.vibration !== null) {
-      const vib = this.state.vibration;
-      if (vib >= this.settings.vibrationCritG) {
-        vibSubScore = Math.max(10, 45 - (vib - this.settings.vibrationCritG) * 15);
-        warnings.push(`High vibration intensity (${vib.toFixed(2)}g exceeds critical threshold).`);
-      } else if (vib >= this.settings.vibrationWarnG) {
-        vibSubScore = Math.max(50, 80 - (vib - this.settings.vibrationWarnG) * 25);
-        warnings.push(`Elevated vibration level (${vib.toFixed(2)}g).`);
-      } else {
-        vibSubScore = 100;
+    let vibScore = 100;
+    if (this.state.vibrationRaw !== null) {
+      const v = this.state.vibrationRaw;
+      if (v >= this.settings.vibrationCritRaw) {
+        vibScore = 30;
+        warnings.push(`Harsh vibration detected (ADC raw ${v}).`);
+      } else if (v >= this.settings.vibrationWarnRaw) {
+        vibScore = 70;
+        warnings.push(`Elevated vibration (ADC raw ${v}).`);
       }
     } else {
-      vibSubScore = 60;
+      vibScore = 60;
     }
 
-    // Weighted aggregation
-    const totalWeight = this.settings.weightPressure + this.settings.weightTemp + this.settings.weightVibration;
-    const wPress = this.settings.weightPressure / totalWeight;
-    const wTemp = this.settings.weightTemp / totalWeight;
-    const wVib = this.settings.weightVibration / totalWeight;
+    let loadScore = 100;
+    if (this.state.loadValid && this.state.loadKg !== null) {
+      const l = this.state.loadKg;
+      if (l >= this.settings.loadCritKg) {
+        loadScore = 20;
+        warnings.push(`Suspension load critical: ${l.toFixed(2)} kg near capacity limit!`);
+      } else if (l >= this.settings.loadWarnKg) {
+        loadScore = 65;
+        warnings.push(`Suspension load high: ${l.toFixed(2)} kg.`);
+      }
+    } else {
+      loadScore = 60;
+    }
 
-    const weightedScore = Math.round(
-      (pressureSubScore * wPress) +
-      (tempSubScore * wTemp) +
-      (vibSubScore * wVib)
-    );
-
-    this.state.healthScore = Math.max(0, Math.min(100, weightedScore));
+    const score = Math.round((tempScore * 0.35) + (vibScore * 0.35) + (loadScore * 0.30));
+    this.state.healthScore = Math.max(0, Math.min(100, score));
     this.state.activeWarnings = warnings;
 
-    // Safety Override: If pressure or temperature is missing, status CANNOT be GOOD
-    if (!this.state.pressureValid || !this.state.temperatureValid) {
-      this.state.healthStatus = 'WARNING';
-      this.state.healthCondition = 'Partial telemetry (Uncalibrated or Missing Sensors)';
-      return;
-    }
-
-    // Classification based on score and safety thresholds
-    if (this.state.healthScore >= 80 && warnings.length === 0) {
-      this.state.healthStatus = 'GOOD';
-      this.state.healthCondition = 'Optimal Operating Range';
-    } else if (this.state.healthScore >= 60 || (warnings.length > 0 && this.state.healthScore >= 50)) {
-      this.state.healthStatus = 'WARNING';
-      this.state.healthCondition = 'Attention Advised (Parameters Out of Optimal Range)';
-    } else {
+    if (validCount < 2) {
+      this.state.healthStatus = 'INSUFFICIENT DATA';
+      this.state.healthCondition = 'Partial telemetry (Probes offline)';
+    } else if (
+      (this.state.temperatureValid && this.state.temperature >= this.settings.tempCritC) ||
+      (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationCritRaw) ||
+      (this.state.loadValid && this.state.loadKg >= this.settings.loadCritKg)
+    ) {
       this.state.healthStatus = 'CRITICAL';
-      this.state.healthCondition = 'Immediate Inspection Recommended';
-    }
-
-    // Health Trend based on recent samples
-    if (this.state.recentTemps.length >= 3) {
-      const recent = this.state.recentTemps;
-      const delta = recent[recent.length - 1] - recent[0];
-      if (delta > 2.0) this.state.healthTrend = 'DEGRADING';
-      else if (delta < -2.0) this.state.healthTrend = 'IMPROVING';
-      else this.state.healthTrend = 'STABLE';
-    }
-  }
-
-  /**
-   * Recompute Road Condition based on recent vibration samples
-   */
-  recomputeRoadCondition() {
-    if (!this.state.vibrationValid || this.state.recentVibrations.length < 5) {
-      this.state.roadCondition = 'INSUFFICIENT DATA';
-      return;
-    }
-
-    const sum = this.state.recentVibrations.reduce((a, b) => a + b, 0);
-    const avg = sum / this.state.recentVibrations.length;
-
-    if (avg < 0.6) {
-      this.state.roadCondition = 'SMOOTH';
-    } else if (avg < 1.4) {
-      this.state.roadCondition = 'MODERATE';
+      this.state.healthCondition = 'Critical Threshold Limit Breach';
+    } else if (
+      (this.state.temperatureValid && this.state.temperature >= this.settings.tempWarnC) ||
+      (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationWarnRaw) ||
+      (this.state.loadValid && this.state.loadKg >= this.settings.loadWarnKg) ||
+      warnings.length > 0
+    ) {
+      this.state.healthStatus = 'WARNING';
+      this.state.healthCondition = 'Attention Advised (Elevated Parameters)';
     } else {
-      this.state.roadCondition = 'ROUGH';
+      this.state.healthStatus = 'NORMAL';
+      this.state.healthCondition = 'All Monitored Parameters Nominal';
     }
   }
 
@@ -452,61 +498,53 @@ class TyravexDashboardEngine {
     const snap = {
       device: 'TYRAVEX Prototype',
       temperature: this.state.temperature,
-      pressure: this.state.pressure,
+      humidity: this.state.humidity,
+      pressure: this.state.tirePressureHpa,
+      pressureDisplay: this.state.tirePressureDisplay,
       pressureUnit: this.settings.pressureUnit,
-      vibration: this.state.vibration,
-      vibrationUnit: this.state.vibrationUnit,
+      vibrationRaw: this.state.vibrationRaw,
+      loadKg: this.state.loadKg,
       healthScore: this.state.healthScore,
       healthStatus: this.state.healthStatus
     };
 
-    // 1. Critical tyre condition alert
-    if (this.state.healthStatus === 'CRITICAL') {
-      window.tyravexEmail.triggerAlert(
-        'critical_health',
-        'CRITICAL Tyre Condition Detected',
-        `Estimated tyre health score dropped to ${this.state.healthScore}%. Active issues: ${this.state.activeWarnings.join('; ')}`,
-        snap
-      );
-    }
-
-    // 2. High temperature alert
     if (this.state.temperatureValid && this.state.temperature >= this.settings.tempCritC) {
       window.tyravexEmail.triggerAlert(
         'temperature',
-        'Tyre Temperature Exceeded Critical Limit',
-        `Current tyre temperature is ${this.state.temperature.toFixed(1)}°C (Limit: ${this.settings.tempCritC}°C).`,
+        'Ambient Temperature Critical Limit Exceeded',
+        `Current temperature is ${this.state.temperature.toFixed(1)}°C (Limit: ${this.settings.tempCritC}°C).`,
         snap
       );
     }
 
-    // 3. Pressure deviation alert
-    if (this.state.pressureValid && this.state.pressure !== null) {
-      const devPct = Math.abs(this.state.pressure - this.settings.targetPressure) / this.settings.targetPressure * 100;
-      if (devPct >= this.settings.pressureToleranceCritPct) {
-        window.tyravexEmail.triggerAlert(
-          'pressure',
-          'Tyre Pressure Outside Safety Tolerance',
-          `Current pressure is ${this.state.pressure.toFixed(1)} PSI (Target: ${this.settings.targetPressure} PSI, Deviation: ${devPct.toFixed(1)}%).`,
-          snap
-        );
-      }
+    if (this.state.humidityValid && (this.state.humidity >= this.settings.humidityWarnHigh || this.state.humidity <= this.settings.humidityWarnLow)) {
+      window.tyravexEmail.triggerAlert(
+        'humidity',
+        'Abnormal Ambient Humidity',
+        `Current relative humidity is ${this.state.humidity.toFixed(1)}%RH.`,
+        snap
+      );
     }
 
-    // 4. Abnormal vibration alert
-    if (this.state.vibrationValid && this.state.vibration >= this.settings.vibrationCritG) {
+    if (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationCritRaw) {
       window.tyravexEmail.triggerAlert(
         'vibration',
-        'Abnormal Tyre Vibration Detected',
-        `Current vibration reached ${this.state.vibration.toFixed(2)}g (Threshold: ${this.settings.vibrationCritG}g).`,
+        'Harsh Tire / Suspension Vibration',
+        `Vibration ADC raw reached ${this.state.vibrationRaw} (Threshold: ${this.settings.vibrationCritRaw}).`,
+        snap
+      );
+    }
+
+    if (this.state.loadValid && this.state.loadKg !== null && this.state.loadKg >= this.settings.loadCritKg) {
+      window.tyravexEmail.triggerAlert(
+        'load',
+        'Excessive Suspension / Tire Load',
+        `Measured suspension load on tire is ${this.state.loadKg.toFixed(2)} kg (Capacity: 10 kg).`,
         snap
       );
     }
   }
 
-  /**
-   * Check for stale incoming data (no packet received in staleTimeoutSeconds)
-   */
   checkStaleData() {
     if (!this.state.lastPacketTime || !this.state.isConnected) return;
 
@@ -516,16 +554,13 @@ class TyravexDashboardEngine {
     if (elapsedMs > staleThresholdMs) {
       if (this.state.healthStatus !== 'INSUFFICIENT DATA') {
         this.state.healthStatus = 'INSUFFICIENT DATA';
-        this.state.healthCondition = 'Telemetry Stale (Communication Paused)';
-        this.state.activeWarnings = ['No fresh sensor packets received for > ' + (elapsedMs / 1000).toFixed(0) + 's'];
+        this.state.healthCondition = 'Telemetry Stale (Paused)';
+        this.state.activeWarnings = [`No sensor packets received for > ${(elapsedMs / 1000).toFixed(0)}s`];
         this.notify();
       }
     }
   }
 
-  /**
-   * Appends live reading to rolling chart history
-   */
   appendChartData() {
     const timeLabel = new Date().toLocaleTimeString('en-US', {
       hour12: false,
@@ -538,35 +573,38 @@ class TyravexDashboardEngine {
 
     this.chartData.labels.push(timeLabel);
     this.chartData.temperature.push(this.state.temperatureValid ? this.state.temperature : null);
-    
-    // Convert pressure to currently displayed user unit
-    let convertedPressure = null;
-    if (this.state.pressureValid && this.state.pressure !== null) {
-      convertedPressure = Number(
-        TyravexDashboardEngine.convertPressure(this.state.pressure, 'PSI', this.settings.pressureUnit).toFixed(2)
-      );
-    }
-    this.chartData.pressure.push(convertedPressure);
-    this.chartData.vibration.push(this.state.vibrationValid ? this.state.vibration : null);
+    this.chartData.humidity.push(this.state.humidityValid ? this.state.humidity : null);
 
-    // Limit buffer length
+    // Tire pressure converted to chosen unit
+    const displayPress = this.state.pressureValid ? this.state.tirePressureDisplay : null;
+    this.chartData.pressure.push(displayPress);
+
+    this.chartData.vibration.push(this.state.vibrationRaw !== null ? this.state.vibrationNormalized : null);
+
+    // Tire load in chosen unit
+    const loadVal = this.state.loadValid
+      ? (this.settings.loadDisplayUnit === 'N' ? this.state.loadN : this.state.loadKg)
+      : null;
+    this.chartData.load.push(loadVal);
+
     while (this.chartData.labels.length > maxPoints) {
       this.chartData.labels.shift();
       this.chartData.temperature.shift();
+      this.chartData.humidity.shift();
       this.chartData.pressure.shift();
       this.chartData.vibration.shift();
+      this.chartData.load.shift();
     }
   }
 
-  /**
-   * Clears chart history
-   */
   resetChartHistory() {
     this.chartData = {
       labels: [],
       temperature: [],
+      humidity: [],
       pressure: [],
-      vibration: []
+      vibration: [],
+      load: []
     };
     this.notify();
   }
@@ -576,21 +614,18 @@ class TyravexDashboardEngine {
     return this.isChartPaused;
   }
 
-  /**
-   * Add a log entry to the live event log
-   */
   addEventLog(severity, description) {
     const logItem = {
       id: Date.now() + Math.random().toString(36).substr(2, 4),
       timestamp: new Date().toLocaleTimeString('en-US', { hour12: false }),
       fullDate: new Date().toISOString(),
       temperature: this.state.temperature !== null ? `${this.state.temperature.toFixed(1)} °C` : '--',
-      pressure: this.state.pressure !== null
-        ? `${TyravexDashboardEngine.convertPressure(this.state.pressure, 'PSI', this.settings.pressureUnit).toFixed(1)} ${this.settings.pressureUnit}`
-        : '--',
-      vibration: this.state.vibration !== null ? `${this.state.vibration.toFixed(2)} ${this.state.vibrationUnit}` : '--',
+      humidity: this.state.humidity !== null ? `${this.state.humidity.toFixed(1)} %RH` : '--',
+      pressure: this.state.tirePressureDisplay !== null ? `${this.state.tirePressureDisplay} ${this.settings.pressureUnit}` : '--',
+      vibration: this.state.vibrationRaw !== null ? `${this.state.vibrationRaw} ADC` : '--',
+      load: this.state.loadKg !== null ? `${this.state.loadKg.toFixed(2)} kg` : '--',
       status: this.state.healthStatus,
-      severity, // 'INFO', 'WARNING', 'CRITICAL', 'SENSOR_ERROR'
+      severity,
       description
     };
 
@@ -602,31 +637,30 @@ class TyravexDashboardEngine {
     this.notify();
   }
 
-  /**
-   * Export in-memory event logs as standard CSV file
-   */
   exportLogsToCSV() {
     if (this.eventLogs.length === 0) {
       alert('No telemetry log events available to export.');
       return;
     }
 
-    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Temperature', 'Pressure', 'Vibration', 'Description'];
+    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Ambient Temp (°C)', 'Humidity (%RH)', 'Tire Pressure', 'Vibration Raw', 'Suspension Load (kg)', 'Description'];
     const rows = this.eventLogs.map((item) => [
       `"${item.timestamp}"`,
       `"${item.fullDate}"`,
       `"${item.severity}"`,
       `"${item.status}"`,
       `"${item.temperature}"`,
+      `"${item.humidity}"`,
       `"${item.pressure}"`,
       `"${item.vibration}"`,
+      `"${item.load}"`,
       `"${item.description.replace(/"/g, '""')}"`
     ]);
 
     const csvContent = [headers.join(','), ...rows.map(r => r.join(','))].join('\r\n');
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
-    
+
     const link = document.createElement('a');
     link.setAttribute('href', url);
     link.setAttribute('download', `TYRAVEX_Telemetry_Log_${new Date().toISOString().slice(0, 10)}.csv`);
@@ -636,9 +670,6 @@ class TyravexDashboardEngine {
     URL.revokeObjectURL(url);
   }
 
-  /**
-   * Set Connection Status
-   */
   setConnected(isConnected, portInfo = null) {
     this.state.isConnected = isConnected;
     this.state.portInfo = portInfo;
@@ -652,45 +683,59 @@ class TyravexDashboardEngine {
     this.notify();
   }
 
-  /**
-   * Simulated Demo Mode Generator
-   * STRICT LABELING: "DEMO MODE"
-   * Provides realistic demonstration data when physical hardware is not yet attached.
-   */
   startDemoMode() {
     if (this.demoInterval) return;
     this.state.isDemoMode = true;
     this.state.isConnected = true;
     this.state.portInfo = {
       usbVendorId: '0x303A',
-      usbProductId: 'ESP32 Simulated Prototype',
+      usbProductId: 'ESP32 Dev Prototype (Demo)',
       baudRate: 115200,
       openedAt: new Date().toISOString()
     };
 
-    this.addEventLog('INFO', 'DEMO MODE initialized with synthetic tyre physics telemetry.');
+    this.addEventLog('INFO', 'DEMO MODE activated (Simulated DHT11, Tire Pressure, Vibration, and HX711 streams).');
 
     let simTick = 0;
+    let eventAccumulator = 0;
     this.demoInterval = setInterval(() => {
       simTick++;
-      // Subtle variations simulating tyre temperature warmup and road bumps
-      const baseTemp = 32.5 + Math.sin(simTick / 15) * 4.2;
-      const basePress = 31.8 + Math.cos(simTick / 20) * 1.1;
-      
-      // Occasional road bump / impact event
-      const isBump = (simTick % 12 === 0);
-      const vibration = isBump ? (2.1 + Math.random() * 0.8) : (0.25 + Math.random() * 0.45);
+
+      const simTemp = 29.0 + Math.sin(simTick / 10) * 2.5;
+      const simHum = 52.0 + Math.cos(simTick / 12) * 6.0;
+
+      // Tire pressure: baseline ~1013 hPa / 14.7 PSI with subtle driving variations
+      const simPress = 1013.2 + Math.sin(simTick / 15) * 1.8;
+
+      const isBump = (simTick % 8 === 0);
+      const simVibRaw = isBump ? Math.floor(2500 + Math.random() * 700) : Math.floor(500 + Math.random() * 300);
+      const simVibDigital = isBump ? 1 : 0;
+      if (isBump) eventAccumulator++;
+
+      // Suspension Load: baseline 24500 counts (0 kg) moving to 64000 - 100000 counts (1.8kg - 3.5kg)
+      const simRawCounts = isBump
+        ? Math.floor(75000 + Math.random() * 25000)
+        : Math.floor(24500 + Math.sin(simTick / 5) * 12000 + (Math.sin(simTick / 14) * 8000));
+
+      const simLoadKg = Number(Math.max(0, (simRawCounts - 24500) / 21500).toFixed(2));
 
       const demoPacket = {
         device: 'TYRAVEX-DEMO',
-        temperature: Number(baseTemp.toFixed(1)),
-        temperature_valid: true,
-        pressure: Number(basePress.toFixed(1)),
-        pressure_unit: 'PSI',
-        pressure_valid: true,
-        vibration: Number(vibration.toFixed(2)),
-        vibration_unit: 'g',
-        vibration_valid: true,
+        temperature_c: Number(simTemp.toFixed(1)),
+        humidity_percent: Number(simHum.toFixed(1)),
+        tire_pressure_hpa: Number(simPress.toFixed(1)),
+        atmospheric_pressure_hpa: Number(simPress.toFixed(1)),
+        vibration_analog_raw: simVibRaw,
+        vibration_digital: simVibDigital,
+        vibration_event_count: eventAccumulator,
+        load_kg: simLoadKg,
+        load_raw: simRawCounts,
+        load_calibrated: true,
+        dht11_valid: true,
+        bmp280_valid: true,
+        vibration_analog_valid: true,
+        vibration_digital_valid: true,
+        hx711_valid: true,
         timestamp_ms: simTick * 1000
       };
 
@@ -709,12 +754,18 @@ class TyravexDashboardEngine {
     this.state.isConnected = false;
     this.state.temperature = null;
     this.state.temperatureValid = false;
-    this.state.pressure = null;
+    this.state.humidity = null;
+    this.state.humidityValid = false;
+    this.state.tirePressureHpa = null;
+    this.state.tirePressureDisplay = null;
     this.state.pressureValid = false;
-    this.state.vibration = null;
-    this.state.vibrationValid = false;
+    this.state.vibrationRaw = null;
+    this.state.vibrationNormalized = null;
+    this.state.loadKg = null;
+    this.state.loadN = null;
+    this.state.loadValid = false;
     this.state.healthStatus = 'INSUFFICIENT DATA';
-    this.state.healthCondition = 'Awaiting Sensor Telemetry';
+    this.state.healthCondition = 'Awaiting Hardware Telemetry';
     this.addEventLog('INFO', 'DEMO MODE deactivated.');
     this.notify();
   }

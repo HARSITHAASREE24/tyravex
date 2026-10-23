@@ -225,6 +225,34 @@ class TyravexSerialManager {
   }
 
   /**
+   * Send a text command to the ESP32 over serial (e.g. TARE, CAL:5.0)
+   * @param {string} command
+   * @returns {Promise<boolean>}
+   */
+  async sendCommand(command) {
+    if (!this.isConnected || !this.port || !this.port.writable) {
+      console.warn('[TYRAVEX Serial] Cannot send command: Port not connected or not writable.');
+      return false;
+    }
+
+    try {
+      const encoder = new TextEncoder();
+      const writer = this.port.writable.getWriter();
+      const data = encoder.encode(command.trim() + '\n');
+      await writer.write(data);
+      writer.releaseLock();
+      console.info(`[TYRAVEX Serial] Sent command: ${command.trim()}`);
+      return true;
+    } catch (err) {
+      console.error('[TYRAVEX Serial] Error sending command:', err);
+      if (this.onErrorCallback) {
+        this.onErrorCallback(`Send command failed: ${err.message}`);
+      }
+      return false;
+    }
+  }
+
+  /**
    * Disconnects and releases all serial streams and locks cleanly.
    * @returns {Promise<boolean>}
    */
