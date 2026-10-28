@@ -354,20 +354,20 @@
 
         <div class="metric-stats-grid">
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Raw Analog Reading (AO)</span>
-            <span class="metric-stat-val" id="vibrationRawDisplay">-- / 4095</span>
+            <span class="metric-stat-label">Vibration Activity (Dev)</span>
+            <span class="metric-stat-val" id="vibrationRawDisplay">-- dev</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Peak Analog Reading</span>
-            <span class="metric-stat-val" id="vibrationPeakDisplay">--</span>
+            <span class="metric-stat-label">Peak Activity</span>
+            <span class="metric-stat-val" id="vibrationPeakDisplay">-- dev</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Digital State (DO)</span>
-            <span class="metric-stat-val" id="vibrationDigitalDisplay">Quiet (0)</span>
+            <span class="metric-stat-label">Activity Status</span>
+            <span class="metric-stat-val" id="vibrationDigitalDisplay">Quiet</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Detected Vibration Events</span>
-            <span class="metric-stat-val" id="vibrationEventCountDisplay">0</span>
+            <span class="metric-stat-label">Sensor Pin</span>
+            <span class="metric-stat-val" id="vibrationEventCountDisplay">GPIO 35 (ADC)</span>
           </div>
         </div>
       </article>
@@ -382,6 +382,7 @@
           <!-- Unit Selector -->
           <div class="unit-switch-group" id="loadUnitToggle">
             <button class="unit-btn active" data-unit="kg">kg</button>
+            <button class="unit-btn" data-unit="%">%</button>
             <button class="unit-btn" data-unit="N">N</button>
           </div>
         </header>
@@ -393,8 +394,8 @@
 
         <div class="metric-stats-grid">
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Calibration Status</span>
-            <span class="metric-stat-val" id="loadCalibrationStatus">READY</span>
+            <span class="metric-stat-label">Capacity Percentage</span>
+            <span class="metric-stat-val" id="loadPercentDisplay">-- %</span>
           </div>
           <div class="metric-stat-item">
             <span class="metric-stat-label">Peak Load</span>
@@ -405,8 +406,8 @@
             <span class="metric-stat-val" id="loadRawDisplay">-- counts</span>
           </div>
           <div class="metric-stat-item">
-            <span class="metric-stat-label">Load Trend</span>
-            <span class="metric-stat-val" id="loadTrendDisplay">Stable</span>
+            <span class="metric-stat-label">Calibration Status</span>
+            <span class="metric-stat-val" id="loadCalibrationStatus">READY</span>
           </div>
         </div>
 
@@ -452,11 +453,11 @@
             <span class="sensor-pill none" id="sensorBmp280Pill">NO DATA</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">Vibration Sensor (AO GPIO 34 / DO GPIO 35)</span>
+            <span class="sensor-name">Vibration Sensor (Analog GPIO 35 ADC)</span>
             <span class="sensor-pill none" id="sensorVibrationPill">NO DATA</span>
           </div>
           <div class="sensor-row">
-            <span class="sensor-name">Suspension Load Cell (HX711 DT 18 / SCK 19)</span>
+            <span class="sensor-name">Suspension Load Cell (HX711 DT 18 / SCK 5)</span>
             <span class="sensor-pill none" id="sensorHx711Pill">READY</span>
           </div>
         </div>
@@ -718,21 +719,21 @@
           <h3 class="settings-section-title">Vibration Sensor Parameters</h3>
           <div class="form-grid-2">
             <div class="form-field">
-              <label for="cfgVibWarnRaw">Vibration Warning Level (ADC Raw):</label>
-              <input type="number" step="50" min="500" max="3500" id="cfgVibWarnRaw" class="form-input" required>
-              <span class="field-hint">Elevated vibration ADC raw threshold (default: 1800)</span>
+              <label for="cfgVibWarnRaw">Vibration Warning Level (Activity):</label>
+              <input type="number" step="1" min="5" max="3500" id="cfgVibWarnRaw" class="form-input" required>
+              <span class="field-hint">Elevated vibration activity threshold (default: 15 dev / 1800 raw)</span>
             </div>
             <div class="form-field">
-              <label for="cfgVibCritRaw">Vibration Critical Level (ADC Raw):</label>
-              <input type="number" step="50" min="1500" max="4095" id="cfgVibCritRaw" class="form-input" required>
-              <span class="field-hint">Severe vibration ADC raw limit (default: 3000)</span>
+              <label for="cfgVibCritRaw">Vibration Critical Level (Activity):</label>
+              <input type="number" step="1" min="10" max="4095" id="cfgVibCritRaw" class="form-input" required>
+              <span class="field-hint">Severe vibration activity limit (default: 40 dev / 3000 raw)</span>
             </div>
           </div>
         </div>
 
         <!-- Section 3: Suspension Load & HX711 Calibration -->
         <div>
-          <h3 class="settings-section-title">Suspension Load &amp; HX711 Calibration (10 kg Cell on DT: 18, SCK: 19)</h3>
+          <h3 class="settings-section-title">Suspension Load &amp; HX711 Calibration (10 kg Cell on DT: 18, SCK: 5)</h3>
           <div class="form-grid-2">
             <div class="form-field">
               <label for="cfgLoadWarnKg">Load Warning Threshold (kg):</label>

@@ -27,8 +27,8 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 |                        TYRAVEX SENSOR HARDWARE                           |
 |  1. DHT11             -> Ambient Temperature (°C) & Humidity (%RH)       |
 |  2. BMP280            -> Tyre Pressure Module (PSI / bar / kPa / hPa)     |
-|  3. Vibration Sensor  -> Analog Displacement (AO) & Digital Switch (DO)  |
-|  4. 10 kg Load Cell   -> Tyre Load on Suspension (HX711 DT: 18, SCK: 19)  |
+|  3. Vibration Sensor  -> Analog Vibration Activity on GPIO 35 (ADC)      |
+|  4. 10 kg Load Cell   -> Tyre Load on Suspension (HX711 DT: 18, SCK: 5)   |
 +------------------------------------+-------------------------------------+
                                      | (Digital, I2C, ADC & SPI Signals)
                                      v
@@ -75,9 +75,9 @@ TYRAVEX is an automotive suspension telemetry, environmental monitoring, and mec
 | **ESP32 Dev Board** | Standard 30-pin or 38-pin DevKit | USB to PC Host | 5V via USB | Microcontroller processing telemetry |
 | **DHT11** | Ambient Temperature & Relative Humidity | **GPIO 4** | **3.3V** & GND | Digital single-bus. Has internal pull-up; external 10kΩ to 3.3V recommended |
 | **BMP280** | Tyre Pressure Sensing | **SDA: GPIO 21**<br>**SCL: GPIO 22** | **3.3V** & GND | Hardware I2C bus. Automatically checks address `0x76` and `0x77` |
-| **Vibration Sensor** | Analog level & Digital pulse counter | **AO: GPIO 34** (ADC1)<br>**DO: GPIO 35** | **3.3V** & GND | GPIO 34/35 are input-only pins on ESP32 ADC1 (no WiFi ADC2 conflicts) |
+| **Vibration Sensor** | Analog vibration activity & AC ripple | **GPIO 35** (ADC1 11dB) | **3.3V** & GND | Deviation computed over 50 samples for dynamic road/tyre vibration |
 | **10 kg Load Cell** | Tyre load sensing via suspension | Connects to HX711 E+, E-, A+, A- | Powered by HX711 | Red: E+, Black: E-, White: A-, Green: A+ |
-| **HX711 Amplifier** | 24-bit ADC for load cell | **DT: GPIO 18**<br>**SCK: GPIO 19** | **3.3V** & GND | DT: Data Output from HX711; SCK: Clock input to HX711 |
+| **HX711 Amplifier** | 24-bit ADC for load cell | **DOUT: GPIO 18**<br>**SCK: GPIO 5** | **3.3V** & GND | DOUT: Data Output from HX711; SCK: Clock input to HX711 |
 | **Indicator LED** | Telemetry Heartbeat | **GPIO 2** | Internal | Builtin dev board LED, toggles on each telemetry packet |
 
 ### Voltage Safety Rules:
@@ -165,41 +165,45 @@ The firmware outputs one newline-delimited JSON line per second (`115200` baud):
 ```json
 {
   "device": "TYRAVEX",
-  "temperature_c": 30.5,
-  "humidity_percent": 55.0,
-  "tyre_pressure_hpa": 1008.2,
-  "tire_pressure_hpa": 1008.2,
-  "atmospheric_pressure_hpa": 1008.2,
-  "vibration_analog_raw": 1250,
-  "vibration_digital": 0,
-  "vibration_event_count": 12,
-  "load_raw": 64800,
-  "load_kg": 1.87,
-  "load_calibrated": true,
-  "dht11_valid": true,
-  "bmp280_valid": true,
-  "vibration_analog_valid": true,
-  "vibration_digital_valid": true,
-  "hx711_valid": true,
+  "temperature": 28.4,
+  "temperature_unit": "C",
+  "humidity": 65.2,
+  "humidity_unit": "%",
+  "pressure": 1012.35,
+  "pressure_unit": "hPa",
+  "vibration": 3.42,
+  "vibration_unit": "ADC_deviation",
+  "weight": 2.50,
+  "weight_unit": "kg",
+  "loadcell_raw": 124500,
+  "temperature_valid": true,
+  "humidity_valid": true,
+  "pressure_valid": true,
+  "vibration_valid": true,
+  "weight_valid": true,
+  "hx711_connected": true,
   "timestamp_ms": 12500
 }
 ```
 
 ### Field Definitions:
-- `temperature_c` *(float | null)*: Ambient temperature in °C from DHT11.
-- `humidity_percent` *(float | null)*: Relative humidity in %RH from DHT11.
-- `tyre_pressure_hpa` *(float | null)*: Tyre pressure in hPa from BMP280 (converted to PSI/bar/kPa/hPa in UI).
-- `vibration_analog_raw` *(int)*: Raw 12-bit ADC value (0 - 4095) from Vibration AO (GPIO 34).
-- `vibration_digital` *(int)*: Digital trigger status (0 = quiet, 1 = active) from Vibration DO (GPIO 35).
-- `vibration_event_count` *(unsigned long)*: Cumulative interrupt-driven count of vibration trigger pulses.
-- `load_raw` *(long)*: Raw transducer counts from HX711 (DT: 18, SCK: 19; ~24.5k unloaded).
-- `load_kg` *(float | null)*: Converted mechanical tyre load in kg applied through the suspension.
-- `load_calibrated` *(boolean)*: `true` if tare and scale factors are calibrated in NVS.
-- `dht11_valid` *(boolean)*: `true` when DHT11 provides valid temperature and humidity readings.
-- `bmp280_valid` *(boolean)*: `true` when BMP280 is detected and responding over I2C.
-- `vibration_analog_valid` *(boolean)*: `true` when AO ADC channel is active.
-- `vibration_digital_valid` *(boolean)*: `true` when DO digital input is active.
-- `hx711_valid` *(boolean)*: `true` when HX711 amplifier is ready on GPIO 18/19.
+- `temperature` *(float | null)*: Ambient temperature in °C from DHT11.
+- `temperature_unit` *(string)*: Temperature unit (`"C"`).
+- `humidity` *(float | null)*: Relative humidity in %RH from DHT11.
+- `humidity_unit` *(string)*: Humidity unit (`"%"`).
+- `pressure` *(float | null)*: Atmospheric / Tyre pressure in hPa from BMP280 (converted to PSI/bar/kPa/hPa in UI).
+- `pressure_unit` *(string)*: Pressure unit (`"hPa"`).
+- `vibration` *(float | null)*: Analog vibration activity deviation from GPIO 35.
+- `vibration_unit` *(string)*: Vibration unit (`"ADC_deviation"`).
+- `weight` *(float | null)*: Suspension weight in kg from calibrated HX711 (or `null` before calibration).
+- `weight_unit` *(string)*: Weight unit (`"kg"`).
+- `loadcell_raw` *(long | null)*: Raw 24-bit transducer counts from HX711 (DOUT: 18, SCK: 5).
+- `temperature_valid` *(boolean)*: `true` when DHT11 provides valid temperature and humidity readings.
+- `humidity_valid` *(boolean)*: `true` when DHT11 provides valid humidity reading.
+- `pressure_valid` *(boolean)*: `true` when BMP280 is detected and responding over I2C.
+- `vibration_valid` *(boolean)*: `true` when vibration ADC channel is active on GPIO 35.
+- `weight_valid` *(boolean)*: `true` when load cell is calibrated and weight is available.
+- `hx711_connected` *(boolean)*: `true` when HX711 amplifier is connected and responding on GPIO 18/5.
 - `timestamp_ms` *(unsigned long)*: Microcontroller uptime in milliseconds.
 
 ---

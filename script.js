@@ -460,15 +460,12 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
+    const currentRaw = window.tyravexEngine.tareLoadCell();
     if (window.tyravexSerial.isConnected) {
-      showToast('info', 'Sending TARE command to ESP32 (Zeroing unloaded load cell)...');
-      const sent = await window.tyravexSerial.sendCommand('TARE');
-      if (sent) {
-        showToast('success', 'TARE command dispatched to ESP32.');
-        window.tyravexEngine.addEventLog('INFO', 'Sent TARE command to ESP32 firmware.');
-      }
+      await window.tyravexSerial.sendCommand('TARE');
+      showToast('success', `Load cell zeroed! Baseline tare offset set to ${currentRaw.toLocaleString()} counts.`);
     } else {
-      showToast('success', 'Demo load cell zeroed (Tare complete).');
+      showToast('success', `Demo load cell zeroed! Baseline offset set to ${currentRaw.toLocaleString()} counts.`);
     }
   }
 
@@ -487,16 +484,14 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    if (window.tyravexSerial.isConnected) {
-      const cmd = `CAL:${weightVal.toFixed(2)}`;
-      showToast('info', `Sending calibration command: ${cmd} ...`);
-      const sent = await window.tyravexSerial.sendCommand(cmd);
-      if (sent) {
-        showToast('success', `Calibrating scale factor with ${weightVal.toFixed(2)} kg reference weight.`);
-        window.tyravexEngine.addEventLog('INFO', `Sent command ${cmd} to ESP32.`);
+    try {
+      const factor = window.tyravexEngine.calibrateLoadCell(weightVal);
+      if (window.tyravexSerial.isConnected) {
+        await window.tyravexSerial.sendCommand(`CAL:${weightVal.toFixed(2)}`);
       }
-    } else {
-      showToast('success', `Demo load cell calibrated with ${weightVal.toFixed(2)} kg reference weight.`);
+      showToast('success', `Calibrated with ${weightVal.toFixed(2)} kg! Scale factor: ${factor.toLocaleString()} (in sketch: CALIBRATION_FACTOR = ${factor}f)`);
+    } catch (err) {
+      showToast('error', err.message);
     }
   }
 
@@ -680,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
       pressTrendEl.textContent = 'Steady';
     }
 
-    // --- CARD 5: Vibration Monitoring (AO & DO) ---
+    // --- CARD 5: Vibration Monitoring (GPIO 35 ADC Deviation) ---
     const vibDisp = document.getElementById('vibrationCurrentDisplay');
     const vibUnitEl = document.getElementById('vibrationCurrentUnit');
     const vibBadge = document.getElementById('vibrationStatusBadge');
@@ -689,16 +684,17 @@ document.addEventListener('DOMContentLoaded', () => {
     const vibDigitalEl = document.getElementById('vibrationDigitalDisplay');
     const vibEventsEl = document.getElementById('vibrationEventCountDisplay');
 
-    if (state.vibrationAnalogValid && state.vibrationRaw !== null) {
-      vibDisp.textContent = state.vibrationNormalized !== null ? state.vibrationNormalized : '--';
-      vibUnitEl.textContent = '% (Norm)';
-      vibRawEl.textContent = `${state.vibrationRaw} / 4095`;
-      vibPeakEl.textContent = `${state.peakVibrationRaw} ADC`;
+    if (state.vibrationValid && state.vibration !== null) {
+      const isDev = state.vibrationUnit === 'ADC_deviation' || state.vibration <= 500;
+      vibDisp.textContent = state.vibration.toFixed(1);
+      vibUnitEl.textContent = isDev ? 'dev' : '% (Norm)';
+      vibRawEl.textContent = `${state.vibration.toFixed(2)} dev`;
+      vibPeakEl.textContent = `${state.peakVibration.toFixed(2)} dev`;
 
-      if (state.vibrationRaw >= settings.vibrationCritRaw) {
+      if (state.vibrationStatus.includes('CRITICAL')) {
         vibBadge.textContent = 'CRITICAL';
         vibBadge.className = 'card-status-badge critical';
-      } else if (state.vibrationRaw >= settings.vibrationWarnRaw) {
+      } else if (state.vibrationStatus.includes('ELEVATED')) {
         vibBadge.textContent = 'ELEVATED';
         vibBadge.className = 'card-status-badge warning';
       } else {
@@ -709,49 +705,66 @@ document.addEventListener('DOMContentLoaded', () => {
       vibDisp.textContent = '--';
       vibRawEl.textContent = '--';
       vibPeakEl.textContent = '--';
-      vibBadge.textContent = 'NO DATA';
+      vibBadge.textContent = state.isConnected ? 'SENSOR FAULT' : 'NO DATA';
       vibBadge.className = 'card-status-badge';
     }
 
     vibDigitalEl.textContent = state.vibrationDigitalStatus;
-    vibEventsEl.textContent = state.vibrationEventCount;
+    if (vibEventsEl) {
+      vibEventsEl.textContent = 'GPIO 35 (ADC)';
+    }
 
     // --- CARD 6: Tyre Load on Suspension (10 kg Load Cell + HX711) ---
     const loadDisp = document.getElementById('loadCurrentDisplay');
     const loadUnitEl = document.getElementById('loadCurrentUnit');
     const loadCalibEl = document.getElementById('loadCalibrationStatus');
     const loadPeakEl = document.getElementById('loadPeakDisplay');
-    const loadMinEl = document.getElementById('loadMinDisplay');
     const loadRawEl = document.getElementById('loadRawDisplay');
-    const loadTrendEl = document.getElementById('loadTrendDisplay');
+    const loadPercentEl = document.getElementById('loadPercentDisplay');
 
     const curLoadUnit = settings.loadDisplayUnit || 'kg';
     loadUnitEl.textContent = curLoadUnit;
 
     if (loadRawEl) {
-      loadRawEl.textContent = state.loadRaw ? `${state.loadRaw.toLocaleString()} counts` : '-- counts';
+      loadRawEl.textContent = state.loadRaw !== null ? `${state.loadRaw.toLocaleString()} counts` : '-- counts';
+    }
+
+    if (loadPercentEl) {
+      loadPercentEl.textContent = state.loadPercent !== null ? `${state.loadPercent.toFixed(1)} %` : '-- %';
     }
 
     if (state.loadValid && state.loadKg !== null) {
-      const val = curLoadUnit === 'N' ? state.loadN : state.loadKg;
-      loadDisp.textContent = val !== null ? val.toFixed(2) : '--';
+      let displayVal = state.loadKg.toFixed(2);
+      if (curLoadUnit === '%') {
+        displayVal = (state.loadPercent !== null ? state.loadPercent : (state.loadKg / 10.0) * 100).toFixed(1);
+      } else if (curLoadUnit === 'N') {
+        displayVal = state.loadN !== null ? state.loadN.toFixed(2) : (state.loadKg * 9.80665).toFixed(2);
+      }
+      loadDisp.textContent = displayVal;
 
-      loadCalibEl.textContent = 'CALIBRATED';
+      loadCalibEl.textContent = state.loadStatus || 'CALIBRATED';
       loadCalibEl.style.color = 'var(--status-good)';
 
-      const peakVal = curLoadUnit === 'N' && state.peakLoadKg !== null ? (state.peakLoadKg * 9.80665).toFixed(2) : (state.peakLoadKg !== null ? state.peakLoadKg.toFixed(2) : '--');
-      const minVal = curLoadUnit === 'N' && state.minLoadKg !== null ? (state.minLoadKg * 9.80665).toFixed(2) : (state.minLoadKg !== null ? state.minLoadKg.toFixed(2) : '--');
+      let peakVal = state.peakLoadKg !== null ? state.peakLoadKg.toFixed(2) : '--';
+      if (curLoadUnit === '%') {
+        peakVal = state.peakLoadKg !== null ? `${((state.peakLoadKg / 10.0) * 100).toFixed(1)} %` : '-- %';
+      } else if (curLoadUnit === 'N') {
+        peakVal = state.peakLoadKg !== null ? `${(state.peakLoadKg * 9.80665).toFixed(2)} N` : '-- N';
+      } else {
+        peakVal = `${peakVal} kg`;
+      }
 
-      loadPeakEl.textContent = `${peakVal} ${curLoadUnit}`;
-      loadMinEl.textContent = `${minVal} ${curLoadUnit}`;
-      loadTrendEl.textContent = state.loadTrend;
+      loadPeakEl.textContent = peakVal;
     } else {
       loadDisp.textContent = '--';
-      loadCalibEl.textContent = state.loadCalibrated ? 'AMPLIFIER FAULT' : 'UNCALIBRATED';
-      loadCalibEl.style.color = state.loadCalibrated ? 'var(--status-crit)' : 'var(--status-warn)';
+      if (state.hx711Connected) {
+        loadCalibEl.textContent = 'UNCALIBRATED (Click Tare / Calibrate)';
+        loadCalibEl.style.color = 'var(--status-warn)';
+      } else {
+        loadCalibEl.textContent = state.isConnected ? 'NOT DETECTED' : 'AWAITING HARDWARE';
+        loadCalibEl.style.color = state.isConnected ? 'var(--status-crit)' : 'var(--text-muted)';
+      }
       loadPeakEl.textContent = `-- ${curLoadUnit}`;
-      loadMinEl.textContent = `-- ${curLoadUnit}`;
-      loadTrendEl.textContent = 'Stable';
     }
 
     // --- CARD 7: Sensor Connection Status ---
@@ -787,7 +800,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // DHT11
     if (state.temperatureValid) {
-      pillDht11.textContent = 'OPERATIONAL';
+      pillDht11.textContent = 'OPERATIONAL (GPIO 4)';
       pillDht11.className = 'sensor-pill ok';
     } else if (state.isConnected) {
       pillDht11.textContent = 'FAULT / DISCONNECTED';
@@ -799,7 +812,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // BMP280
     if (state.pressureValid) {
-      pillBmp280.textContent = 'OPERATIONAL (I2C)';
+      pillBmp280.textContent = 'OPERATIONAL (I2C 21/22)';
       pillBmp280.className = 'sensor-pill ok';
     } else if (state.isConnected) {
       pillBmp280.textContent = 'FAULT (I2C 0x76/0x77)';
@@ -810,8 +823,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // Vibration Module
-    if (state.vibrationAnalogValid && state.vibrationRaw !== null) {
-      pillVib.textContent = 'OPERATIONAL (AO & DO)';
+    if (state.vibrationValid) {
+      pillVib.textContent = 'OPERATIONAL (GPIO 35 ADC)';
       pillVib.className = 'sensor-pill ok';
     } else if (state.isConnected) {
       pillVib.textContent = 'FAULT';
@@ -822,14 +835,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // HX711 Load Cell
-    if (state.loadValid) {
-      pillHx711.textContent = 'CALIBRATED & READY';
+    if (state.loadValid && state.loadCalibrated) {
+      pillHx711.textContent = 'CALIBRATED & READY (GPIO 18/5)';
       pillHx711.className = 'sensor-pill ok';
-    } else if (state.isConnected && state.hx711Valid && !state.loadCalibrated) {
-      pillHx711.textContent = 'UNCALIBRATED';
+    } else if (state.hx711Connected) {
+      pillHx711.textContent = 'STREAMING RAW (HX711 OK)';
       pillHx711.className = 'sensor-pill uncalibrated';
     } else if (state.isConnected) {
-      pillHx711.textContent = 'AMPLIFIER FAULT';
+      pillHx711.textContent = 'NOT DETECTED (GPIO 18/5)';
       pillHx711.className = 'sensor-pill error';
     } else {
       pillHx711.textContent = 'NO DATA';
@@ -865,14 +878,20 @@ document.addEventListener('DOMContentLoaded', () => {
       vibChart.data.datasets[0].data = chartData.vibration;
       vibChart.update('none');
 
-      // 5. Load Chart
+      // 5. Load Chart (Supports kg, %, and N)
       loadChart.data.labels = chartData.labels;
       loadChart.data.datasets[0].label = `Tyre Load (${curLoadUnit})`;
       const convertedLoadHistory = chartData.load.map(val => {
         if (val === null) return null;
-        return curLoadUnit === 'N' ? Number((val * 9.80665).toFixed(2)) : val;
+        if (curLoadUnit === '%') return Number(((val / 10.0) * 100).toFixed(1));
+        if (curLoadUnit === 'N') return Number((val * 9.80665).toFixed(2));
+        return val;
       });
       loadChart.data.datasets[0].data = convertedLoadHistory;
+      if (loadChart.options.scales.y) {
+        if (loadChart.options.scales.y.title) loadChart.options.scales.y.title.text = curLoadUnit;
+        loadChart.options.scales.y.suggestedMax = curLoadUnit === '%' ? 100 : (curLoadUnit === 'N' ? 100 : 10);
+      }
       loadChart.update('none');
     } else {
       tempChartEmpty.classList.remove('hidden');

@@ -2,9 +2,9 @@
  * TYRAVEX Telemetry & Monitoring Engine
  * Telemetry processor for:
  * 1. DHT11: Ambient Temperature (°C) & Humidity (%RH)
- * 2. BMP280: Tire Pressure (PSI / bar / kPa / hPa)
- * 3. Vibration Sensor: Analog Raw (0-4095) & Digital Events
- * 4. HX711 Load Cell: Suspension / Tire Applied Load (kg / N / Raw)
+ * 2. BMP280: Tire / Atmospheric Pressure (PSI / bar / kPa / hPa)
+ * 3. Vibration Sensor: Analog Activity Deviation (GPIO 35 ADC)
+ * 4. HX711 Load Cell: Suspension / Tire Applied Weight (kg / N / Raw counts)
  */
 
 class TyravexDashboardEngine {
@@ -24,42 +24,52 @@ class TyravexDashboardEngine {
 
       // 1. DHT11: Ambient Temperature & Humidity
       temperature: null,          // °C
+      temperatureUnit: 'C',
       temperatureValid: false,
       tempMin: null,
       tempMax: null,
       recentTemps: [],
       tempTrend: 'STABLE',
       humidity: null,             // %RH
+      humidityUnit: '%',
       humidityValid: false,
       humidityStatus: 'NO DATA',
       dht11Valid: false,
 
-      // 2. Tire Pressure
+      // 2. Tire / Atmospheric Pressure (BMP280)
       tirePressureHpa: null,      // Base reading in hPa
       tirePressureDisplay: null,  // In user's chosen unit (PSI / bar / kPa / hPa)
+      pressureUnit: 'hPa',
       pressureValid: false,
       recentPressures: [],
       pressureTrend: 'STEADY',
       bmp280Valid: false,
 
-      // 3. Vibration Sensor (AO & DO)
-      vibrationRaw: null,         // 0 - 4095 ADC
+      // 3. Vibration Sensor (Analog Activity Deviation)
+      vibration: null,            // ADC deviation activity (e.g. 3.42)
+      vibrationRaw: null,         // Deviation count or raw value
+      vibrationUnit: 'ADC_deviation',
       vibrationNormalized: null,  // 0 - 100%
       vibrationDigital: 0,        // 0 (quiet) or 1 (trigger)
       vibrationDigitalStatus: 'QUIET',
       vibrationEventCount: 0,
+      peakVibration: 0,
       peakVibrationRaw: 0,
       recentVibrations: [],
       vibrationStatus: 'AWAITING',
+      vibrationValid: false,
       vibrationAnalogValid: false,
       vibrationDigitalValid: false,
 
       // 4. HX711 & 10 kg Load Cell (Suspension Load on Tire)
       loadKg: null,
+      loadPercent: null,
       loadN: null,
-      loadRaw: 0,
+      loadUnit: 'kg',
+      loadRaw: null,
       loadCalibrated: false,
       loadValid: false,
+      hx711Connected: false,
       hx711Valid: false,
       peakLoadKg: null,
       minLoadKg: null,
@@ -111,16 +121,20 @@ class TyravexDashboardEngine {
       pressureUnit: 'PSI', // 'PSI', 'bar', 'kPa', 'hPa'
       targetTirePressurePsi: 32.0,
 
-      // Vibration Sensor Limits (12-bit ADC raw 0-4095)
+      // Vibration Sensor Limits (ADC deviation activity)
+      vibrationWarnDev: 15.0,
+      vibrationCritDev: 40.0,
       vibrationWarnRaw: 1800,
       vibrationCritRaw: 3000,
 
       // Suspension Load on Tire (10 kg max rated load cell)
       loadWarnKg: 7.5,
       loadCritKg: 9.5,
-      loadDisplayUnit: 'kg', // 'kg' or 'N'
-      loadTareOffset: 24500,
-      loadScaleFactor: 21500,
+      loadRatedCapacityKg: 10.0,
+      loadDisplayUnit: 'kg', // 'kg', '%', or 'N'
+      loadTareOffset: 0,
+      loadScaleFactor: 12345.0, // Matches sketch default CALIBRATION_FACTOR = 12345.0f
+      webCalibrated: false,
 
       // Buffer & Alert parameters
       chartHistoryLength: 40,
@@ -202,11 +216,17 @@ class TyravexDashboardEngine {
     this.state.lastPacketTime = Date.now();
 
     // 1. Process DHT11 Temperature & Humidity
-    this.state.dht11Valid = Boolean(packet.dht11_valid);
-    if (this.state.dht11Valid && packet.temperature_c !== null && !isNaN(packet.temperature_c)) {
-      const tempVal = Number(packet.temperature_c);
-      if (tempVal >= -20 && tempVal <= 70) {
-        this.state.temperature = tempVal;
+    const tempValid = packet.temperature_valid !== undefined
+      ? Boolean(packet.temperature_valid)
+      : Boolean(packet.dht11_valid);
+    this.state.dht11Valid = tempValid;
+    this.state.temperatureValid = tempValid;
+
+    const rawTemp = packet.temperature !== undefined ? packet.temperature : packet.temperature_c;
+    if (tempValid && rawTemp !== null && !isNaN(rawTemp)) {
+      const tempVal = Number(rawTemp);
+      if (tempVal >= -40 && tempVal <= 85) {
+        this.state.temperature = Number(tempVal.toFixed(1));
         this.state.temperatureValid = true;
 
         if (this.state.tempMin === null || tempVal < this.state.tempMin) this.state.tempMin = tempVal;
@@ -230,10 +250,16 @@ class TyravexDashboardEngine {
       this.state.temperatureValid = false;
     }
 
-    if (this.state.dht11Valid && packet.humidity_percent !== null && !isNaN(packet.humidity_percent)) {
-      const humVal = Number(packet.humidity_percent);
+    const humValid = packet.humidity_valid !== undefined
+      ? Boolean(packet.humidity_valid)
+      : Boolean(packet.dht11_valid);
+    this.state.humidityValid = humValid;
+
+    const rawHum = packet.humidity !== undefined ? packet.humidity : packet.humidity_percent;
+    if (humValid && rawHum !== null && !isNaN(rawHum)) {
+      const humVal = Number(rawHum);
       if (humVal >= 0 && humVal <= 100) {
-        this.state.humidity = humVal;
+        this.state.humidity = Number(humVal.toFixed(1));
         this.state.humidityValid = true;
         if (humVal > this.settings.humidityWarnHigh) {
           this.state.humidityStatus = 'HIGH HUMIDITY';
@@ -254,17 +280,24 @@ class TyravexDashboardEngine {
     }
 
     // 2. Process Tyre Pressure (BMP280)
-    this.state.bmp280Valid = Boolean(packet.bmp280_valid);
-    const rawHpa = packet.tyre_pressure_hpa !== undefined
-      ? packet.tyre_pressure_hpa
-      : (packet.tire_pressure_hpa !== undefined
-          ? packet.tire_pressure_hpa
-          : packet.atmospheric_pressure_hpa);
+    const pressValid = packet.pressure_valid !== undefined
+      ? Boolean(packet.pressure_valid)
+      : Boolean(packet.bmp280_valid);
+    this.state.bmp280Valid = pressValid;
+    this.state.pressureValid = pressValid;
 
-    if (this.state.bmp280Valid && rawHpa !== null && !isNaN(rawHpa)) {
+    const rawHpa = packet.pressure !== undefined
+      ? packet.pressure
+      : (packet.tyre_pressure_hpa !== undefined
+          ? packet.tyre_pressure_hpa
+          : (packet.tire_pressure_hpa !== undefined
+              ? packet.tire_pressure_hpa
+              : packet.atmospheric_pressure_hpa));
+
+    if (pressValid && rawHpa !== null && !isNaN(rawHpa)) {
       const pressVal = Number(rawHpa);
       if (pressVal >= 300 && pressVal <= 1400) {
-        this.state.tirePressureHpa = pressVal;
+        this.state.tirePressureHpa = Number(pressVal.toFixed(2));
         this.state.tirePressureDisplay = TyravexDashboardEngine.convertPressureFromHpa(pressVal, this.settings.pressureUnit);
         this.state.pressureValid = true;
 
@@ -288,59 +321,126 @@ class TyravexDashboardEngine {
       this.state.pressureValid = false;
     }
 
-    // 3. Process Vibration Sensor (AO & DO)
-    this.state.vibrationAnalogValid = Boolean(packet.vibration_analog_valid);
+    // 3. Process Vibration Sensor (Analog Activity Deviation)
+    const vibValid = packet.vibration_valid !== undefined
+      ? Boolean(packet.vibration_valid)
+      : Boolean(packet.vibration_analog_valid);
+    this.state.vibrationValid = vibValid;
+    this.state.vibrationAnalogValid = vibValid;
     this.state.vibrationDigitalValid = Boolean(packet.vibration_digital_valid);
 
-    if (this.state.vibrationAnalogValid && packet.vibration_analog_raw !== null && !isNaN(packet.vibration_analog_raw)) {
-      const raw = Math.max(0, Math.min(4095, Number(packet.vibration_analog_raw)));
-      this.state.vibrationRaw = raw;
-      this.state.vibrationNormalized = Math.round((raw / 4095) * 100);
+    const rawVib = packet.vibration !== undefined
+      ? packet.vibration
+      : packet.vibration_analog_raw;
 
-      if (raw > this.state.peakVibrationRaw) {
-        this.state.peakVibrationRaw = raw;
-      }
+    if (vibValid && rawVib !== null && !isNaN(rawVib)) {
+      const vibVal = Math.max(0, Number(rawVib));
+      this.state.vibration = Number(vibVal.toFixed(2));
+      this.state.vibrationRaw = Number(vibVal.toFixed(2));
+      this.state.vibrationUnit = packet.vibration_unit || (vibVal <= 500 ? 'ADC_deviation' : 'ADC_raw');
 
-      this.state.recentVibrations.push(raw);
-      if (this.state.recentVibrations.length > 20) this.state.recentVibrations.shift();
-
-      if (raw >= this.settings.vibrationCritRaw) {
-        this.state.vibrationStatus = 'CRITICAL VIBRATION';
-      } else if (raw >= this.settings.vibrationWarnRaw) {
-        this.state.vibrationStatus = 'ELEVATED';
+      // Normalized 0 - 100% calculation
+      if (this.state.vibrationUnit === 'ADC_deviation' || vibVal <= 500) {
+        // Deviation mode: ~0-5 quiet, 15 elevated, 40+ harsh
+        this.state.vibrationNormalized = Math.min(100, Math.round((vibVal / 50) * 100));
+        if (vibVal >= (this.settings.vibrationCritDev || 40)) {
+          this.state.vibrationStatus = 'CRITICAL VIBRATION';
+        } else if (vibVal >= (this.settings.vibrationWarnDev || 15)) {
+          this.state.vibrationStatus = 'ELEVATED';
+        } else {
+          this.state.vibrationStatus = 'NOMINAL';
+        }
+        this.state.vibrationDigital = vibVal >= 15 ? 1 : 0;
+        this.state.vibrationDigitalStatus = vibVal >= 15 ? 'ACTIVE (PULSE)' : 'QUIET';
       } else {
-        this.state.vibrationStatus = 'NOMINAL';
+        // Legacy 12-bit ADC raw mode (0-4095)
+        this.state.vibrationNormalized = Math.min(100, Math.round((vibVal / 4095) * 100));
+        if (vibVal >= this.settings.vibrationCritRaw) {
+          this.state.vibrationStatus = 'CRITICAL VIBRATION';
+        } else if (vibVal >= this.settings.vibrationWarnRaw) {
+          this.state.vibrationStatus = 'ELEVATED';
+        } else {
+          this.state.vibrationStatus = 'NOMINAL';
+        }
+        this.state.vibrationDigital = packet.vibration_digital ? 1 : 0;
+        this.state.vibrationDigitalStatus = this.state.vibrationDigital === 1 ? 'ACTIVE (PULSE)' : 'QUIET';
       }
+
+      if (vibVal > this.state.peakVibration) {
+        this.state.peakVibration = Number(vibVal.toFixed(2));
+        this.state.peakVibrationRaw = Number(vibVal.toFixed(2));
+      }
+
+      this.state.recentVibrations.push(vibVal);
+      if (this.state.recentVibrations.length > 20) this.state.recentVibrations.shift();
     } else {
+      this.state.vibration = null;
       this.state.vibrationRaw = null;
       this.state.vibrationNormalized = null;
       this.state.vibrationStatus = 'NO DATA';
+      this.state.vibrationDigital = 0;
+      this.state.vibrationDigitalStatus = 'NO DATA';
     }
 
-    this.state.vibrationDigital = packet.vibration_digital ? 1 : 0;
-    this.state.vibrationDigitalStatus = this.state.vibrationDigital === 1 ? 'ACTIVE (PULSE)' : 'QUIET';
-    this.state.vibrationEventCount = Number(packet.vibration_event_count) || 0;
+    if (packet.vibration_event_count !== undefined) {
+      this.state.vibrationEventCount = Number(packet.vibration_event_count) || 0;
+    }
 
-    // 4. Process HX711 Suspension / Tire Applied Load
-    this.state.hx711Valid = Boolean(packet.hx711_valid);
-    this.state.loadCalibrated = Boolean(packet.load_calibrated);
-    this.state.loadRaw = packet.load_raw ? Number(packet.load_raw) : 0;
+    // 4. Process HX711 Load Cell / Suspension Weight (kg and %)
+    const hxConnected = packet.hx711_connected !== undefined
+      ? Boolean(packet.hx711_connected)
+      : Boolean(packet.hx711_valid);
+    this.state.hx711Connected = hxConnected;
+    this.state.hx711Valid = hxConnected;
 
-    // Determine loadKg: either directly from packet.load_kg or calculate from load_raw
+    const rawLoad = packet.loadcell_raw !== undefined
+      ? packet.loadcell_raw
+      : packet.load_raw;
+    if (rawLoad !== undefined && rawLoad !== null && !isNaN(rawLoad)) {
+      this.state.loadRaw = Number(rawLoad);
+    }
+
     let calculatedKg = null;
-    if (packet.load_kg !== null && !isNaN(packet.load_kg)) {
-      calculatedKg = Number(packet.load_kg);
-    } else if (this.state.loadRaw > 0) {
-      // Calculate from raw counts using tare offset and scale factor
-      // Default offset ~24500, scale ~21500 per kg
-      const tare = this.settings.loadTareOffset || 24500;
-      const scale = this.settings.loadScaleFactor || 21500;
-      calculatedKg = (this.state.loadRaw - tare) / scale;
+    let calculatedPercent = null;
+    let isCalibrated = false;
+
+    // Check if firmware provided calibrated weight
+    const rawWeight = packet.weight !== undefined ? packet.weight : packet.load_kg;
+    const isWeightValid = packet.weight_valid !== undefined
+      ? Boolean(packet.weight_valid)
+      : Boolean(packet.load_calibrated);
+
+    if (isWeightValid && rawWeight !== null && !isNaN(rawWeight)) {
+      calculatedKg = Number(rawWeight);
+      if (packet.weight_percent !== undefined && packet.weight_percent !== null && !isNaN(packet.weight_percent)) {
+        calculatedPercent = Number(packet.weight_percent);
+      } else {
+        calculatedPercent = (calculatedKg / (this.settings.loadRatedCapacityKg || 10.0)) * 100;
+      }
+      isCalibrated = true;
+      this.state.loadStatus = 'CALIBRATED (ESP32)';
+    } else if (hxConnected && this.state.loadRaw !== null) {
+      // Auto-tare and convert raw data to digital kg & percentage
+      if (this.settings.loadTareOffset === undefined || this.settings.loadTareOffset === 0) {
+        this.settings.loadTareOffset = this.state.loadRaw;
+        this.saveSettings({ loadTareOffset: this.state.loadRaw });
+      }
+      const tare = this.settings.loadTareOffset || 0;
+      const factor = this.settings.loadScaleFactor || 12345.0;
+      if (factor > 0) {
+        calculatedKg = Math.max(0, (this.state.loadRaw - tare) / factor);
+        calculatedPercent = (calculatedKg / (this.settings.loadRatedCapacityKg || 10.0)) * 100;
+        isCalibrated = true;
+        this.state.loadStatus = 'DIGITAL ACTIVE';
+      }
     }
 
-    if (this.state.hx711Valid && calculatedKg !== null && !isNaN(calculatedKg)) {
+    this.state.loadCalibrated = isCalibrated;
+
+    if (hxConnected && calculatedKg !== null && !isNaN(calculatedKg)) {
       const loadKgVal = Math.max(0, calculatedKg);
       this.state.loadKg = Number(loadKgVal.toFixed(2));
+      this.state.loadPercent = Math.min(100, Math.max(0, Number((calculatedPercent !== null ? calculatedPercent : (loadKgVal / 10.0) * 100).toFixed(1))));
       this.state.loadN = Number((loadKgVal * 9.80665).toFixed(2));
       this.state.loadValid = true;
 
@@ -365,14 +465,13 @@ class TyravexDashboardEngine {
         this.state.loadStatus = 'OVERLOAD (> 9.5 kg)';
       } else if (loadKgVal >= this.settings.loadWarnKg) {
         this.state.loadStatus = 'HIGH LOAD';
-      } else {
-        this.state.loadStatus = 'NOMINAL';
       }
     } else {
       this.state.loadKg = null;
+      this.state.loadPercent = null;
       this.state.loadN = null;
       this.state.loadValid = false;
-      this.state.loadStatus = this.state.isConnected ? 'AMPLIFIER FAULT' : 'NO DATA';
+      this.state.loadStatus = hxConnected ? 'UNCALIBRATED' : (this.state.isConnected ? 'AMPLIFIER FAULT' : 'NO DATA');
     }
 
     // 5. Recompute Monitoring Status
@@ -391,14 +490,55 @@ class TyravexDashboardEngine {
   }
 
   /**
+   * Browser-side zeroing (Tare) of the load cell
+   */
+  tareLoadCell() {
+    const currentRaw = this.state.loadRaw !== null ? this.state.loadRaw : 0;
+    this.saveSettings({
+      loadTareOffset: currentRaw
+    });
+    this.state.loadKg = 0.00;
+    this.state.loadN = 0.00;
+    this.state.loadValid = true;
+    this.addEventLog('INFO', `Load cell tared. Zero baseline offset saved at ${currentRaw.toLocaleString()} counts.`);
+    this.notify();
+    return currentRaw;
+  }
+
+  /**
+   * Browser-side scale calibration with reference weight
+   */
+  calibrateLoadCell(knownWeightKg) {
+    const currentRaw = this.state.loadRaw !== null ? this.state.loadRaw : 0;
+    const tare = this.settings.loadTareOffset || 0;
+    const delta = Math.abs(currentRaw - tare);
+    if (delta <= 10 || knownWeightKg <= 0) {
+      throw new Error('Sensor delta too small for calibration. Ensure reference weight is firmly on load cell.');
+    }
+    const factor = Number((delta / knownWeightKg).toFixed(1));
+    this.saveSettings({
+      loadScaleFactor: factor,
+      webCalibrated: true
+    });
+    this.state.loadKg = Number(knownWeightKg.toFixed(2));
+    this.state.loadN = Number((knownWeightKg * 9.80665).toFixed(2));
+    this.state.loadValid = true;
+    this.state.loadCalibrated = true;
+    this.state.loadStatus = 'CALIBRATED (WEB)';
+    this.addEventLog('INFO', `Load cell calibrated with ${knownWeightKg} kg. Scale factor: ${factor.toLocaleString()} counts/kg.`);
+    this.notify();
+    return factor;
+  }
+
+  /**
    * Recompute Overall Monitoring Status
    */
   recomputeMonitoringStatus() {
     const warnings = [];
     const validCount = (this.state.temperatureValid ? 1 : 0) +
                        (this.state.pressureValid ? 1 : 0) +
-                       (this.state.vibrationAnalogValid && this.state.vibrationRaw !== null ? 1 : 0) +
-                       (this.state.loadValid ? 1 : 0);
+                       (this.state.vibrationValid ? 1 : 0) +
+                       ((this.state.loadValid || this.state.hx711Connected) ? 1 : 0);
 
     if (!this.state.lastPacketTime || validCount === 0) {
       this.state.healthScore = null;
@@ -409,16 +549,18 @@ class TyravexDashboardEngine {
     }
 
     if (!this.state.temperatureValid) {
-      warnings.push('DHT11 Temperature sensor offline.');
+      warnings.push('DHT11 Temperature & Humidity sensor offline.');
     }
     if (!this.state.pressureValid) {
       warnings.push('Tyre Pressure sensor (BMP280) offline.');
     }
-    if (this.state.vibrationRaw === null) {
+    if (!this.state.vibrationValid) {
       warnings.push('Vibration sensor module reading unavailable.');
     }
-    if (!this.state.loadValid) {
-      warnings.push('Suspension Load Cell (HX711) reading unavailable.');
+    if (!this.state.loadValid && !this.state.hx711Connected) {
+      warnings.push('Suspension Load Cell (HX711) disconnected or wiring error.');
+    } else if (this.state.hx711Connected && !this.state.loadCalibrated) {
+      warnings.push('Suspension Load Cell (HX711) streaming raw counts (Calibration Recommended).');
     }
 
     let tempScore = 100;
@@ -436,14 +578,18 @@ class TyravexDashboardEngine {
     }
 
     let vibScore = 100;
-    if (this.state.vibrationRaw !== null) {
-      const v = this.state.vibrationRaw;
-      if (v >= this.settings.vibrationCritRaw) {
+    if (this.state.vibrationValid && this.state.vibration !== null) {
+      const v = this.state.vibration;
+      const isDev = this.state.vibrationUnit === 'ADC_deviation' || v <= 500;
+      const crit = isDev ? (this.settings.vibrationCritDev || 40) : this.settings.vibrationCritRaw;
+      const warn = isDev ? (this.settings.vibrationWarnDev || 15) : this.settings.vibrationWarnRaw;
+
+      if (v >= crit) {
         vibScore = 30;
-        warnings.push(`Harsh vibration detected (ADC raw ${v}).`);
-      } else if (v >= this.settings.vibrationWarnRaw) {
+        warnings.push(`Harsh vibration detected (${v.toFixed(1)} ${this.state.vibrationUnit}).`);
+      } else if (v >= warn) {
         vibScore = 70;
-        warnings.push(`Elevated vibration (ADC raw ${v}).`);
+        warnings.push(`Elevated vibration (${v.toFixed(1)} ${this.state.vibrationUnit}).`);
       }
     } else {
       vibScore = 60;
@@ -459,6 +605,8 @@ class TyravexDashboardEngine {
         loadScore = 65;
         warnings.push(`Suspension load high: ${l.toFixed(2)} kg.`);
       }
+    } else if (this.state.hx711Connected) {
+      loadScore = 80;
     } else {
       loadScore = 60;
     }
@@ -467,19 +615,24 @@ class TyravexDashboardEngine {
     this.state.healthScore = Math.max(0, Math.min(100, score));
     this.state.activeWarnings = warnings;
 
+    const isVibCrit = this.state.vibrationValid && this.state.vibration !== null &&
+      (this.state.vibration >= (this.state.vibrationUnit === 'ADC_deviation' || this.state.vibration <= 500 ? (this.settings.vibrationCritDev || 40) : this.settings.vibrationCritRaw));
+    const isVibWarn = this.state.vibrationValid && this.state.vibration !== null &&
+      (this.state.vibration >= (this.state.vibrationUnit === 'ADC_deviation' || this.state.vibration <= 500 ? (this.settings.vibrationWarnDev || 15) : this.settings.vibrationWarnRaw));
+
     if (validCount < 2) {
       this.state.healthStatus = 'INSUFFICIENT DATA';
       this.state.healthCondition = 'Partial telemetry (Probes offline)';
     } else if (
       (this.state.temperatureValid && this.state.temperature >= this.settings.tempCritC) ||
-      (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationCritRaw) ||
+      isVibCrit ||
       (this.state.loadValid && this.state.loadKg >= this.settings.loadCritKg)
     ) {
       this.state.healthStatus = 'CRITICAL';
       this.state.healthCondition = 'Critical Threshold Limit Breach';
     } else if (
       (this.state.temperatureValid && this.state.temperature >= this.settings.tempWarnC) ||
-      (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationWarnRaw) ||
+      isVibWarn ||
       (this.state.loadValid && this.state.loadKg >= this.settings.loadWarnKg) ||
       warnings.length > 0
     ) {
@@ -504,7 +657,7 @@ class TyravexDashboardEngine {
       pressure: this.state.tirePressureHpa,
       pressureDisplay: this.state.tirePressureDisplay,
       pressureUnit: this.settings.pressureUnit,
-      vibrationRaw: this.state.vibrationRaw,
+      vibrationRaw: this.state.vibration,
       loadKg: this.state.loadKg,
       healthScore: this.state.healthScore,
       healthStatus: this.state.healthStatus
@@ -528,11 +681,14 @@ class TyravexDashboardEngine {
       );
     }
 
-    if (this.state.vibrationRaw !== null && this.state.vibrationRaw >= this.settings.vibrationCritRaw) {
+    const isVibCrit = this.state.vibrationValid && this.state.vibration !== null &&
+      (this.state.vibration >= (this.state.vibrationUnit === 'ADC_deviation' || this.state.vibration <= 500 ? (this.settings.vibrationCritDev || 40) : this.settings.vibrationCritRaw));
+
+    if (isVibCrit) {
       window.tyravexEmail.triggerAlert(
         'vibration',
         'Harsh Tyre / Suspension Vibration',
-        `Vibration ADC raw reached ${this.state.vibrationRaw} (Threshold: ${this.settings.vibrationCritRaw}).`,
+        `Vibration activity reached ${this.state.vibration.toFixed(1)} ${this.state.vibrationUnit}.`,
         snap
       );
     }
@@ -581,12 +737,20 @@ class TyravexDashboardEngine {
     const displayPress = this.state.pressureValid ? this.state.tirePressureDisplay : null;
     this.chartData.pressure.push(displayPress);
 
-    this.chartData.vibration.push(this.state.vibrationRaw !== null ? this.state.vibrationNormalized : null);
+    // Vibration activity / normalized intensity
+    this.chartData.vibration.push(this.state.vibrationValid ? this.state.vibrationNormalized : null);
 
-    // Tire load in chosen unit
-    const loadVal = this.state.loadValid
-      ? (this.settings.loadDisplayUnit === 'N' ? this.state.loadN : this.state.loadKg)
-      : null;
+    // Tire load in chosen unit (kg, %, or N)
+    let loadVal = null;
+    if (this.state.loadValid) {
+      if (this.settings.loadDisplayUnit === '%') {
+        loadVal = this.state.loadPercent;
+      } else if (this.settings.loadDisplayUnit === 'N') {
+        loadVal = this.state.loadN;
+      } else {
+        loadVal = this.state.loadKg;
+      }
+    }
     this.chartData.load.push(loadVal);
 
     while (this.chartData.labels.length > maxPoints) {
@@ -624,8 +788,8 @@ class TyravexDashboardEngine {
       temperature: this.state.temperature !== null ? `${this.state.temperature.toFixed(1)} °C` : '--',
       humidity: this.state.humidity !== null ? `${this.state.humidity.toFixed(1)} %RH` : '--',
       pressure: this.state.tirePressureDisplay !== null ? `${this.state.tirePressureDisplay} ${this.settings.pressureUnit}` : '--',
-      vibration: this.state.vibrationRaw !== null ? `${this.state.vibrationRaw} ADC` : '--',
-      load: this.state.loadKg !== null ? `${this.state.loadKg.toFixed(2)} kg` : '--',
+      vibration: this.state.vibration !== null ? `${this.state.vibration.toFixed(1)} dev` : '--',
+      load: this.state.loadKg !== null ? `${this.state.loadKg.toFixed(2)} kg` : (this.state.loadRaw !== null ? `${this.state.loadRaw} counts` : '--'),
       status: this.state.healthStatus,
       severity,
       description
@@ -645,7 +809,7 @@ class TyravexDashboardEngine {
       return;
     }
 
-    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Ambient Temp (°C)', 'Humidity (%RH)', 'Tyre Pressure', 'Vibration Raw', 'Suspension Load (kg)', 'Description'];
+    const headers = ['Timestamp', 'ISO Date', 'Severity', 'Estimated Status', 'Ambient Temp (°C)', 'Humidity (%RH)', 'Tyre Pressure', 'Vibration Activity', 'Suspension Load (kg)', 'Description'];
     const rows = this.eventLogs.map((item) => [
       `"${item.timestamp}"`,
       `"${item.fullDate}"`,
@@ -696,49 +860,62 @@ class TyravexDashboardEngine {
       openedAt: new Date().toISOString()
     };
 
-    this.addEventLog('INFO', 'DEMO MODE activated (Simulated DHT11, Tyre Pressure, Vibration, and HX711 streams).');
+    this.addEventLog('INFO', 'DEMO MODE activated (Simulated DHT11, BMP280, Vibration ADC, and HX711 streams).');
 
     let simTick = 0;
-    let eventAccumulator = 0;
     this.demoInterval = setInterval(() => {
       simTick++;
 
-      const simTemp = 29.0 + Math.sin(simTick / 10) * 2.5;
-      const simHum = 52.0 + Math.cos(simTick / 12) * 6.0;
+      const simTemp = 28.5 + Math.sin(simTick / 10) * 2.2;
+      const simHum = 54.0 + Math.cos(simTick / 12) * 5.0;
 
-      // Tire pressure: baseline ~1013 hPa / 14.7 PSI with subtle driving variations
-      const simPress = 1013.2 + Math.sin(simTick / 15) * 1.8;
+      // Atmospheric/Tire pressure: baseline ~1013.25 hPa
+      const simPress = 1013.25 + Math.sin(simTick / 15) * 1.5;
 
+      // Vibration Activity: baseline ~2.5 ADC deviation; occasional spike ~25-45
       const isBump = (simTick % 8 === 0);
-      const simVibRaw = isBump ? Math.floor(2500 + Math.random() * 700) : Math.floor(500 + Math.random() * 300);
-      const simVibDigital = isBump ? 1 : 0;
-      if (isBump) eventAccumulator++;
+      const simVibDev = isBump ? Number((28.0 + Math.random() * 22.0).toFixed(2)) : Number((1.8 + Math.random() * 3.2).toFixed(2));
 
-      // Suspension Load: baseline 24500 counts (0 kg) moving to 64000 - 100000 counts (1.8kg - 3.5kg)
+      // Suspension Load: baseline ~128,450 counts (approx zero load), bumping to 155,000 counts (~2.15 kg)
+      const baselineOffset = this.settings.loadTareOffset || 128450;
+      const factor = this.settings.loadScaleFactor || 12345.0;
       const simRawCounts = isBump
-        ? Math.floor(75000 + Math.random() * 25000)
-        : Math.floor(24500 + Math.sin(simTick / 5) * 12000 + (Math.sin(simTick / 14) * 8000));
+        ? Math.floor(baselineOffset + factor * (1.8 + Math.random() * 1.5))
+        : Math.floor(baselineOffset + factor * (0.05 + Math.sin(simTick / 6) * 0.05));
 
-      const simLoadKg = Number(Math.max(0, (simRawCounts - 24500) / 21500).toFixed(2));
+      const simLoadKg = Number(Math.max(0, (simRawCounts - baselineOffset) / factor).toFixed(2));
 
       const demoPacket = {
-        device: 'TYRAVEX-DEMO',
+        device: 'TYRAVEX',
+        temperature: Number(simTemp.toFixed(1)),
+        temperature_unit: 'C',
+        temperature_valid: true,
+        humidity: Number(simHum.toFixed(1)),
+        humidity_unit: '%',
+        humidity_valid: true,
+        pressure: Number(simPress.toFixed(2)),
+        pressure_unit: 'hPa',
+        pressure_valid: true,
+        vibration: simVibDev,
+        vibration_unit: 'ADC_deviation',
+        vibration_valid: true,
+        weight: simLoadKg,
+        weight_unit: 'kg',
+        weight_valid: true,
+        loadcell_raw: simRawCounts,
+        hx711_connected: true,
+        timestamp_ms: simTick * 1000,
+        // Legacy fallbacks
         temperature_c: Number(simTemp.toFixed(1)),
         humidity_percent: Number(simHum.toFixed(1)),
-        tire_pressure_hpa: Number(simPress.toFixed(1)),
-        atmospheric_pressure_hpa: Number(simPress.toFixed(1)),
-        vibration_analog_raw: simVibRaw,
-        vibration_digital: simVibDigital,
-        vibration_event_count: eventAccumulator,
+        tyre_pressure_hpa: Number(simPress.toFixed(2)),
         load_kg: simLoadKg,
         load_raw: simRawCounts,
         load_calibrated: true,
         dht11_valid: true,
         bmp280_valid: true,
         vibration_analog_valid: true,
-        vibration_digital_valid: true,
-        hx711_valid: true,
-        timestamp_ms: simTick * 1000
+        hx711_valid: true
       };
 
       this.processPacket(demoPacket);
@@ -761,6 +938,7 @@ class TyravexDashboardEngine {
     this.state.tirePressureHpa = null;
     this.state.tirePressureDisplay = null;
     this.state.pressureValid = false;
+    this.state.vibration = null;
     this.state.vibrationRaw = null;
     this.state.vibrationNormalized = null;
     this.state.loadKg = null;
